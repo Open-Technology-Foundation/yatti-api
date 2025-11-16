@@ -2,11 +2,11 @@
 
 **Access specialized knowledgebases with AI-powered queries**
 
-YaTTi gives you command-line access to curated knowledge domains using RAG (Retrieval Augmented Generation). Ask questions, get answers backed by authoritative sources across multiple specialized fields.
+YaTTi gives you command-line access to curated knowledge domains using sophisticated RAG (Retrieval Augmented Generation) powered by [customkb](https://github.com/Open-Technology-Foundation/customkb). Ask questions, get answers backed by authoritative sources across multiple specialized fields.
 
 ## Available Knowledgebases
 
-Query these specialized knowledge domains:
+Knowledgebases are updated regularly. To obtain a list of current knowledgebases enter `yatti-api kb`.  Here are a few of these specialized knowledge domains:
 
 ### Academic & Research
 - **appliedanthropology** - Applied anthropology research and practice
@@ -15,7 +15,6 @@ Query these specialized knowledge domains:
 ### Regional & Cultural
 - **jakartapost** - Indonesian news and current affairs (extensive archive)
 - **peraturan.go.id** - Indonesian laws and regulations
-- **wayang.net** - Indonesian shadow puppet theatre and culture
 
 ### Professional & Technical
 - **okusiassociates** - Corporate services and Indonesian business operations
@@ -62,14 +61,11 @@ yatti-api query seculardharma "What is mindfulness meditation?"
 ### Ask About Indonesian Culture
 
 ```bash
-# Explore wayang (shadow puppet) stories and characters
-yatti-api query wayang.net "Who is Arjuna in wayang stories?"
-
 # Current Indonesian news and analysis
-yatti-api query jakartapost "What are current Indonesian economic trends?"
+yatti-api query jakartapost "Outline the economic conditions in Indonesian in 1997."
 
 # Indonesian laws and regulations
-yatti-api query peraturan.go.id "What are the requirements for foreign investment?"
+yatti-api query peraturan.go.id "What are the current requirements for foreign direct investment?"
 ```
 
 ### Research & Academia
@@ -86,7 +82,7 @@ yatti-api query prosocial.world "What is multilevel selection theory?"
 
 ```bash
 # Buddhist philosophy and practice
-yatti-api query seculardharma "How does Buddhism approach suffering?"
+yatti-api query seculardharma "What is dharma?"
 yatti-api query seculardharma "What is the difference between concentration and mindfulness?"
 ```
 
@@ -96,7 +92,7 @@ yatti-api query seculardharma "What is the difference between concentration and 
 
 ```bash
 # Use more context sources
-yatti-api query jakartapost "Soeharto's legacy" --top-k 15
+yatti-api query jakartapost "Soeharto's legacy" --top-k 50  --timeout 300
 
 # Scholarly writing style with extended response
 yatti-api query appliedanthropology "participant observation" -p scholarly -M 2000
@@ -106,10 +102,6 @@ yatti-api query peraturan.go.id "company formation" --context-only
 ```
 
 **Note:** jakartapost is a very large knowledgebase - use longer timeouts for complex queries:
-
-```bash
-yatti-api query jakartapost "Jokowi presidency analysis" --timeout 300
-```
 
 ---
 
@@ -276,7 +268,7 @@ yatti-api query -K <knowledgebase> -q "<query text>" [OPTIONS]
 - `-s, --context-scope NUM` - Context segments per result (default: 3)
 - `-c, --context-only` - Return only context without AI response
 - `-M, --max-tokens NUM` - Maximum response tokens
-- `-p, --prompt-template NAME` - Prompt style (default, instructive, scholarly, concise, analytical, conversational, technical)
+- `-p, --prompt-template NAME` - Prompt style (`default`, `instructive`, `scholarly`, `concise`, `analytical`, `conversational`, `technical`)
 - `-f, --force-refresh` - Skip cache, force new query
 - `--cache-ttl SECONDS` - Cache TTL in seconds (default: 86400)
 - `--timeout SECONDS` - Query timeout in seconds (default: 60, max: 600)

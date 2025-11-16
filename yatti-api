@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # YaTTI API Client - A command-line interface for the YaTTi REST API
 set -euo pipefail
-shopt -s inherit_errexit shift_verbose extglob nullglob
+shopt -s inherit_errexit extglob nullglob
 
 # Script metadata
 declare -r VERSION='1.4.0'

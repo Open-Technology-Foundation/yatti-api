@@ -375,8 +375,8 @@ For issues with tests:
 
 ---
 
-**Last Updated**: 2025-11-08
+**Last Updated**: 2025-11-16
 **Test Suite Version**: 1.0.0
-**Coverage Target**: 85%+
+**Coverage Target**: 95%+
 
 #fin

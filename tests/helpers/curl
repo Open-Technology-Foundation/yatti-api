@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Mock curl for testing - returns mocked responses from environment variables
+
+# Check if we should fail
+if [[ "${MOCK_CURL_FAIL:-0}" == "1" ]]; then
+  echo "curl: (7) Failed to connect to test.yatti.local port 443: Connection refused" >&2
+  exit 7
+fi
+
+# Read mock data from environment
+response="${MOCK_CURL_RESPONSE}"
+http_code="${MOCK_CURL_HTTP_CODE:-200}"
+
+# If no response set, use empty JSON object
+if [[ -z "$response" ]]; then
+  response="{}"
+fi
+
+# Output in the format curl -w "\n__HTTP_CODE__%{http_code}" would produce
+# The response body, then newline, then __HTTP_CODE__, then the code (no trailing newline)
+printf '%s\n__HTTP_CODE__%s' "$response" "$http_code"

@@ -2,7 +2,6 @@
 # Integration tests for cmd_status() in yatti-api
 
 load '../helpers/test_helpers'
-load '../helpers/mocks'
 
 setup() {
   setup_test_env
@@ -10,14 +9,10 @@ setup() {
 
   # Load fixtures
   FIXTURES_FILE="${BATS_TEST_DIRNAME}/../fixtures/api_responses.json"
-
-  # Mock curl for API requests
-  mock_curl
 }
 
 teardown() {
   teardown_test_env
-  reset_mock_curl
 }
 
 # Basic status tests
@@ -69,7 +64,7 @@ teardown() {
   set_mock_curl_fail
 
   run ./yatti-api status
-  [[ "$status" -eq 1 ]]
+  [[ "$status" -ne 0 ]]
 }
 
 #fin

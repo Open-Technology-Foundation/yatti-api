@@ -23,6 +23,30 @@ source_yatti_functions() {
   fi
 }
 
+# Setup mock curl in PATH
+setup_mock_curl_path() {
+  # Save original PATH
+  export ORIGINAL_PATH="$PATH"
+
+  # Prepend helpers directory to PATH so our mock curl is found first
+  export PATH="${BATS_TEST_DIRNAME}/../helpers:$PATH"
+}
+
+# Set mock curl response via environment variables
+set_mock_curl_response() {
+  local -- response="$1"
+  local -- http_code="${2:-200}"
+
+  export MOCK_CURL_RESPONSE="$response"
+  export MOCK_CURL_HTTP_CODE="$http_code"
+  export MOCK_CURL_FAIL=0
+}
+
+# Make curl fail (simulate network failure)
+set_mock_curl_fail() {
+  export MOCK_CURL_FAIL=1
+}
+
 # Setup test environment
 setup_test_env() {
   # Create isolated test environment
@@ -44,10 +68,19 @@ setup_test_env() {
 
   # Ensure config dir exists
   mkdir -p "$CONFIG_DIR"
+
+  # Setup mock curl in PATH
+  setup_mock_curl_path
 }
 
 # Cleanup test environment
 teardown_test_env() {
+  # Restore original PATH
+  if [[ -n "${ORIGINAL_PATH:-}" ]]; then
+    export PATH="$ORIGINAL_PATH"
+    unset ORIGINAL_PATH
+  fi
+
   # Clean up temp files
   [[ -d "$TEST_HOME" ]] && rm -rf "$TEST_HOME"
 
@@ -55,6 +88,9 @@ teardown_test_env() {
   unset TEST_HOME CONFIG_DIR API_KEY_FILE
   unset YATTI_TEST_MODE YATTI_API_BASE
   unset YATTI_API_KEY PROMPT VERBOSE
+
+  # Unset mock curl variables
+  unset MOCK_CURL_RESPONSE MOCK_CURL_HTTP_CODE MOCK_CURL_FAIL
 }
 
 # Create a test API key file

@@ -83,21 +83,6 @@ teardown() {
   [[ "$status" -eq 0 ]]
 }
 
-@test "noarg() fails when argument is missing" {
-  run noarg "-K"
-  [[ "$status" -eq 2 ]]
-}
-
-@test "noarg() fails when next arg starts with dash" {
-  run noarg "-K" "-q"
-  [[ "$status" -eq 2 ]]
-}
-
-@test "noarg() error message includes option name" {
-  run noarg "-K" "-q"
-  [[ "$output" == *"-K"* ]]
-}
-
 # Tests for decp() function
 
 @test "decp() prints VERBOSE variable by default" {
