@@ -1,0 +1,851 @@
+#!/usr/bin/env bash
+# YaTTI API Client - A command-line interface for the YaTTi REST API
+set -euo pipefail
+shopt -s inherit_errexit shift_verbose extglob nullglob
+
+# Script metadata
+declare -r VERSION='1.4.0'
+#shellcheck disable=SC2155
+declare -r SCRIPT_PATH=$(realpath -e -- "$0")
+declare -r SCRIPT_NAME=${SCRIPT_PATH##*/}
+
+# Configuration constants
+declare -r API_BASE="${YATTI_API_BASE:-https://yatti.id/v1}"
+declare -r CONFIG_DIR="$HOME"/.config/"$SCRIPT_NAME"
+declare -r API_KEY_FILE="$CONFIG_DIR"/api_key
+
+# Global variables
+declare -i VERBOSE=${VERBOSE:-0} PROMPT=1
+# Colour definitions
+if [[ -t 2 ]]; then
+  declare -r RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' NC=$'\033[0m'
+else
+  declare -r RED='' GREEN='' YELLOW='' CYAN='' NC=''
+fi
+# Core message function using FUNCNAME for context
+_msg() {
+  local -- status="${FUNCNAME[1]}" prefix="$SCRIPT_NAME" msg
+  case "$status" in
+    success) prefix+=": ${GREEN}✓${NC}" ;;
+    warn)    prefix+=" ${YELLOW}▲${NC}" ;;
+    info)    prefix+=": ${CYAN}◉${NC}" ;;
+    error)   prefix+=": ${RED}✗${NC}" ;;
+    *) ;;
+  esac
+  for msg in "$@"; do printf '%s %s\n' "$prefix" "$msg"; done
+}
+
+# Conditional output based on verbosity
+vecho() { ((VERBOSE)) || return 0; _msg "$@"; }
+success() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
+warn() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
+info() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
+# Unconditional output
+error() { >&2 _msg "$@"; }
+die() { (($# > 1)) && error "${@:2}"; exit "${1:-0}"; }
+
+# Argument validation
+noarg() {
+  if (($# < 2)) || [[ ${2:0:1} == '-' ]]; then
+    die 2 "Missing argument for option ${1@Q}"
+  fi
+}
+
+# Debug print variable declaration
+decp() {
+  local -- var="${1:-VERBOSE}"
+  declare -p "$var" 2>/dev/null | sed 's/^declare //' || echo 'undefined'
+}
+
+# Trim whitespace
+trim() {
+  local v="$*"
+  v="${v#"${v%%[![:blank:]]*}"}"
+  echo -n "${v%"${v##*[![:blank:]]}"}"
+}
+
+# Pluralization helper
+s() { ((${1:-0} == 1)) && echo '' || echo 's'; }
+
+# Yes/no prompt
+yn() {
+  ((PROMPT)) || return 0
+  >&2 read -r -n1 -p "$SCRIPT_NAME: ${YELLOW}$1${NC} y/n "
+  >&2 echo
+  [[ ${REPLY,,} == y ]]
+}
+
+# --------------------------------------------------------------------------------
+# Core functions
+# --------------------------------------------------------------------------------
+
+# Load API key
+load_api_key() {
+  if [[ -f "$API_KEY_FILE" ]]; then
+    cat "$API_KEY_FILE"
+  elif [[ -n "${YATTI_API_KEY:-}" ]]; then
+    echo "$YATTI_API_KEY"
+  else
+    echo ''
+  fi
+}
+
+# Save API key
+save_api_key() {
+  local -- api_key=$1
+  # Ensure config directory exists
+  mkdir -p "$CONFIG_DIR"
+  # Atomic creation with correct permissions to prevent race condition
+  install -m 600 /dev/null "$API_KEY_FILE"
+  echo "$api_key" > "$API_KEY_FILE"
+  success "API key saved to ${API_KEY_FILE@Q}"
+}
+
+# Make API request
+api_request() {
+  local -- method=$1
+  local -- endpoint=$2
+  shift 2
+  local -a curl_args=("$@")
+  local -- api_key
+  api_key=$(load_api_key)
+  
+  local -a headers=()
+  headers+=(-H 'Content-Type: application/json')
+  headers+=(-H 'Accept: application/json')
+  
+  [[ -z "$api_key" ]] || headers+=(-H "X-API-Key: $api_key")
+
+  ((VERBOSE==0)) || info "Request: $method ${API_BASE}${endpoint}"
+  
+  local -- response
+  local -- http_code
+  
+  # Make request and capture both response and HTTP code
+  response=$(curl -s -w "\n__HTTP_CODE__%{http_code}" \
+    -X "$method" \
+    "${headers[@]}" \
+    "${curl_args[@]}" \
+    "${API_BASE}$endpoint")
+  
+  http_code=$(echo "$response" | tail -1 | sed 's/__HTTP_CODE__//')
+  response=$(echo "$response" | sed '$d')
+  
+  if [[ "$http_code" -ge 200 ]] && [[ "$http_code" -lt 300 ]]; then
+    echo "$response"
+  else
+    if ((VERBOSE)) || [[ "$http_code" -ge 400 ]]; then
+      error "HTTP $http_code"
+      if [[ -n "$response" ]]; then
+        # Output error message to stderr, not stdout
+        echo "$response" | jq -r '.error.message // .message // .' 2>/dev/null >&2 || echo "$response" >&2
+      fi
+    fi
+    return 1
+  fi
+}
+
+# Format JSON output
+format_json() {
+  if command -v jq &> /dev/null; then
+    jq --color-output '.' 2>/dev/null || cat
+  else
+    cat
+  fi
+}
+
+# --------------------------------------------------------------------------------
+# Command functions
+# --------------------------------------------------------------------------------
+
+# Command: configure
+cmd_configure() {
+  echo 'YaTTi API Configuration'
+  echo
+  local -- current_key api_key
+  current_key=$(load_api_key)
+  if [[ -n "$current_key" ]]; then
+    echo "$SCRIPT_NAME: Current API key: ${current_key:0:8}...${current_key: -8}"
+    echo
+  fi
+
+  read -rp "$SCRIPT_NAME: Enter API key (or press Enter to skip): " api_key
+  [[ -z "$api_key" ]] || save_api_key "$api_key"
+
+  echo
+  info 'Testing configuration...'
+  if api_request GET /status &>/dev/null; then
+    success 'Configuration successful'
+  else
+    warn 'Could not connect to API. Check your API key and network connection.'
+  fi
+}
+
+# Command: status
+cmd_status() {
+  local -- subcommand="${1:-}"
+  
+  case "$subcommand" in
+    health)
+      api_request GET /status/health | format_json
+      ;;
+    info)
+      api_request GET /status/info | format_json
+      ;;
+    *)
+      api_request GET /status | format_json
+      ;;
+  esac
+}
+
+# Command: users
+cmd_users() {
+  local -- subcommand="${1:-list}" user_id json_data
+  
+  case "$subcommand" in
+    list)
+      api_request GET '/users' | format_json
+      ;;
+    get)
+      user_id="${2:-}"
+      [[ -n "$user_id" ]] || die 2 'User ID required'
+      api_request GET /users/"$user_id" | format_json
+      ;;
+    create)
+      json_data="${2:-}"
+      [[ -n "$json_data" ]] || die 2 'User data required (JSON format)'
+      api_request POST /users -d "$json_data" | format_json
+      ;;
+    update)
+      user_id="${2:-}"
+      json_data="${3:-}"
+      [[ -n "$user_id" ]] || die 2 'User ID required'
+      [[ -n "$json_data" ]] || die 2 'User data required'
+      api_request PUT /users/"$user_id" -d "$json_data" | format_json
+      ;;
+    delete)
+      user_id="${2:-}"
+      [[ -n "$user_id" ]] || die 2 'User ID required'
+      api_request DELETE /users/"$user_id" | format_json
+      ;;
+    *)
+      die 22 "Unknown users subcommand ${subcommand@Q}" 'Available: list, get, create, update, delete'
+      ;;
+  esac
+}
+
+# Command: knowledgebases (kb)
+cmd_knowledgebases() {
+  local -- subcommand="${1:-list}" kb_name
+  
+  case "$subcommand" in
+    list)
+      info 'Available Knowledgebases:'
+      api_request GET /knowledgebases | jq -r '.data.knowledgebases[] | "\(.name) - \(.description // "No description")"' 2>/dev/null || api_request GET /knowledgebases | format_json
+      ;;
+    get)
+      kb_name="${2:-}"
+      [[ -n "$kb_name" ]] || die 2 'Knowledgebase name required'
+      api_request GET /knowledgebases/"$kb_name" | format_json
+      ;;
+    sync)
+      info 'Syncing knowledgebases from filesystem...'
+      api_request GET /knowledgebases/sync | format_json
+      ;;
+    *)
+      die 22 "Unknown knowledgebases subcommand ${subcommand@Q}" 'Available: list, get, sync'
+      ;;
+  esac
+}
+
+# Command: query
+cmd_query() {
+  local -- kb_name='' query_text='' temperature='0.0' model='gpt-5.1'
+  local -i force_refresh=0 context_only=0
+  local -i cache_ttl=86400
+  local -- max_tokens='' prompt_template=''
+  local -i top_k=5 context_scope=3 timeout=60
+
+  while (($#)); do case $1 in
+    -K|--knowledgebase)
+      noarg "$@"; shift; kb_name=$1 ;;
+    -q|--query)
+      noarg "$@"; shift; query_text=$1 ;;
+    -k|--top-k)
+      noarg "$@"; shift; top_k=$1 ;;
+    -t|--temperature)
+      noarg "$@"; shift; temperature=$1 ;;
+    -m|--model)
+      noarg "$@"; shift; model=$1 ;;
+    -s|--context-scope)
+      noarg "$@"; shift; context_scope=$1 ;;
+    -f|--force-refresh)
+      force_refresh=1 ;;
+    -c|--context|--context-only)
+      context_only=1 ;;
+    -M|--max-tokens)
+      noarg "$@"; shift; max_tokens=$1 ;;
+    -p|--prompt-template)
+      noarg "$@"; shift; prompt_template=$1 ;;
+    --cache-ttl)
+      noarg "$@"; shift; cache_ttl=$1 ;;
+    --timeout)
+      noarg "$@"; shift; timeout=$1 ;;
+    -h|--help)
+      cat <<EOT
+Usage: $SCRIPT_NAME query [options]
+
+Options:"
+  -K, --knowledgebase NAME   Knowledgebase to query (required)
+  -q, --query TEXT           Query text (required)
+  -k, --top-k NUM            Number of contexts to retrieve (default: $top_k)
+  -t, --temperature NUM      LLM temperature 0.0-2.0 (default: $temperature)
+  -m, --model NAME           LLM model (default: $model)
+  -s, --context-scope NUM    Context segments per result (default: $context_scope, typically 1-10)
+  -c, --context-only         Return only context without AI response
+  -M, --max-tokens NUM       Maximum response tokens
+  -p, --prompt-template NAME Prompt style (default, instructive, scholarly, concise,
+                             analytical, conversational, technical)
+  -f, --force-refresh        Skip cache and force new query
+  --cache-ttl SECONDS        Cache TTL in seconds (default: $cache_ttl)
+  --timeout SECONDS          Query timeout in seconds (default: 60, max: 600)
+                             Use higher values for large knowledgebases like jakartapost
+
+Available models: All latest LLMs from OpenAI, Anthropic, and Google
+EOT
+        return 0
+        ;;
+    -[KqktmscMpfh]*)
+       #shellcheck disable=SC2046    # Handle combined short options
+       set -- '' $(printf -- '-%c ' $(grep -o . <<<"${1:1}")) "${@:2}" ;;
+    -*)
+      die 22 "Invalid option ${1@Q}" ;;
+    *)
+      if [[ -z "$kb_name" ]]; then
+        kb_name=$1
+      elif [[ -z "$query_text" ]]; then
+        query_text=$1
+      else
+        die 22 "Too many arguments ${1@Q}"
+      fi
+      ;;
+  esac; shift; done
+  
+  # Validate required parameters
+  [[ -n "$kb_name" ]] || die 2 'Knowledgebase name required' "Usage: $SCRIPT_NAME query -K <knowledgebase> -q <query>"
+  [[ -n "$query_text" ]] || die 2 'Query text required' "Usage: $SCRIPT_NAME query <knowledgebase> <query>"
+  
+  # Auto-suggest higher timeout for large knowledgebases
+  if [[ "$kb_name" == jakartapost ]] && ((timeout < 300)); then
+    info 'Note: jakartapost is a large knowledgebase. Consider using --timeout 300 for better results.'
+  fi
+
+  # Build JSON payload using jq to prevent injection
+  local -- json_payload
+  local -- options_base
+  options_base=$(jq -n \
+    --argjson top_k "$top_k" \
+    --argjson temperature "$temperature" \
+    --arg model "$model" \
+    --argjson context_scope "$context_scope" \
+    --argjson cache_ttl "$cache_ttl" \
+    --argjson timeout "$timeout" \
+    --argjson force_refresh "$force_refresh" \
+    --argjson context_only "$context_only" \
+    '{
+      top_k: $top_k,
+      temperature: $temperature,
+      model: $model,
+      context_scope: $context_scope,
+      force_refresh: ($force_refresh == 1),
+      cache_ttl: $cache_ttl,
+      timeout: $timeout,
+      context_only: ($context_only == 1)
+    }')
+
+  # Add optional fields
+  [[ -n "$max_tokens" ]] && options_base=$(echo "$options_base" | jq --argjson mt "$max_tokens" '. + {max_tokens: $mt}')
+  [[ -n "$prompt_template" ]] && options_base=$(echo "$options_base" | jq --arg pt "$prompt_template" '. + {prompt_template: $pt}')
+
+  # Build final payload
+  json_payload=$(jq -n \
+    --arg kb "$kb_name" \
+    --arg query "$query_text" \
+    --argjson options "$options_base" \
+    '{knowledgebase: $kb, query: $query, options: $options}'
+  )
+  
+  info "Querying $kb_name..."
+  # Make query request
+  local -- response
+  if response=$(api_request POST "/query" -d "$json_payload"); then
+    # Parse and display response
+    if [[ "${OUTPUT_FORMAT:-pretty}" == json ]]; then
+      echo "$response" | format_json
+    else
+      # Pretty print the response
+      local query_id answer
+      local -i cached
+      query_id=$(echo "$response" | jq -r '.data.query_id // ""')
+      answer=$(echo "$response" | jq -r '.data.response // ""')
+      cached=$(echo "$response" | jq -r 'if (.data.metadata.cached // false) then 1 else 0 end')
+      
+      [[ -z "$query_id" ]] || info "Query ID: $query_id"
+
+      ((!cached)) || info "(Cached response)"
+      
+      # Check if this is a context-only query
+      if ((context_only)); then
+        info 'Contexts:'
+        # Display contexts with source and content
+        echo "$response" | jq -r '.data.contexts[]? | "\n[\(.source | split("/") | .[-1])]\n\(.content)\n"' 2>/dev/null
+      else
+        info 'Answer:'
+        echo "$answer"
+        
+        # Show contexts if verbose
+        if ((VERBOSE)); then
+          info 'Contexts:'
+          echo "$response" | jq -r '.data.contexts[]' 2>/dev/null
+        fi
+      fi
+    fi
+  else
+    return 1
+  fi
+}
+
+# Command: history
+cmd_history() {
+  local -- limit="${1:-20}" kb_filter="${2:-}"
+  
+  local -- params="?limit=$limit"
+  [[ -z "$kb_filter" ]] || params="${params}&knowledgebase=$kb_filter"
+
+  info 'Query History:'
+  api_request GET /query"$params" | jq -r '.data.queries[] | "\(.created_at | split("T")[0]) | \(.knowledgebase) | \(.query) | \(.status)"' 2>/dev/null || api_request GET /query"$params" | format_json
+}
+
+# Command: get query
+cmd_get_query() {
+  local -- query_id="${1:-}"
+  [[ -n "$query_id" ]] || die 2 'Query ID required'
+  
+  api_request GET /query/"$query_id" | format_json
+}
+
+# Command: docs
+cmd_docs() {
+  local -- doc_type="${1:-user}"
+  local -- format="${2:-}"
+
+  case "$doc_type" in
+    user|'')
+      info 'Fetching user documentation...'
+      if [[ "$format" == "raw" ]]; then
+        curl -s "$API_BASE"/docs/raw
+      elif [[ "$format" == html ]]; then
+        info 'Opening documentation in browser...'
+        if command -v xdg-open &> /dev/null; then
+          xdg-open "$API_BASE"/docs
+        elif command -v open &> /dev/null; then
+          open "$API_BASE"/docs
+        else
+          info "Visit ${API_BASE}/docs in your browser"
+        fi
+      else
+        api_request GET /docs | jq -r '.data.content // .data' 2>/dev/null || api_request GET /docs
+      fi
+      ;;
+
+    api)
+      info 'Fetching API documentation...'
+      if [[ "$format" == raw ]]; then
+        api_request GET /docs/api | jq -r '.data.content // .' 2>/dev/null
+      else
+        api_request GET /docs/api | format_json
+      fi
+      ;;
+
+    technical|dev|developer)
+      info 'Fetching developer documentation...'
+      if [[ "$format" == raw ]]; then
+        api_request GET /docs/technical | jq -r '.data.content // .' 2>/dev/null
+      else
+        api_request GET /docs/technical | format_json
+      fi
+      ;;
+
+    list)
+      info "Available documentation:"
+      echo "  user       - User guide for using the API (default)"
+      echo "  api        - Technical API documentation"
+      echo "  technical  - Developer README and implementation details"
+      echo
+      echo "Formats:"
+      echo "  (default)  - JSON formatted output"
+      echo "  raw        - Plain markdown text"
+      echo "  html       - Open in web browser (user docs only)"
+      echo
+      echo "Examples:"
+      echo "  $SCRIPT_NAME docs                    # User guide in JSON"
+      echo "  $SCRIPT_NAME docs user raw           # User guide as markdown"
+      echo "  $SCRIPT_NAME docs api                # API docs in JSON"
+      echo "  $SCRIPT_NAME docs technical raw      # Developer docs as markdown"
+      echo "  $SCRIPT_NAME docs user html          # Open user guide in browser"
+      ;;
+
+    -h|--help|help)
+      echo "Usage: $SCRIPT_NAME docs [type] [format]"
+      echo
+      echo "Types:"
+      echo "  user       - User guide (default)"
+      echo "  api        - API technical documentation"
+      echo "  technical  - Developer documentation"
+      echo "  list       - List available documentation"
+      echo
+      echo "Formats:"
+      echo "  (default)  - JSON formatted"
+      echo "  raw        - Plain markdown"
+      echo "  html       - Open in browser (user docs only)"
+      ;;
+
+    *)
+      die 22 "Unknown documentation type: $doc_type" "Available: user, api, technical, list"
+      ;;
+  esac
+}
+
+# Command: help
+cmd_help() {
+  cat <<EOF
+$SCRIPT_NAME $VERSION - YaTTi API Client
+
+Usage: $SCRIPT_NAME [command] [options]
+
+Commands:
+  configure                    Configure API key and settings
+  status [health|info]         Check API status
+  users [subcommand]           User management
+  kb, knowledgebases [sub]     Knowledgebase operations
+  query [options]              Execute a RAG query
+  history [limit] [kb]         View query history
+  get-query <id>               Get specific query result
+  docs [type] [format]         View API documentation
+  update [--check|--force]     Check for updates or update the client
+  help                         Show this help message
+  version                      Show version information
+
+Query Examples:
+  $SCRIPT_NAME query seculardharma "What is mindfulness?"
+  $SCRIPT_NAME query -K jakartapost -q "Who is Soeharto?"
+  $SCRIPT_NAME query -K ollama -q "Explain LLMs" --model gpt-4o --top-k 10
+  $SCRIPT_NAME query -K wikipedia -q "Python programming" -c  # Context only
+  $SCRIPT_NAME query -K arxiv -q "Quantum computing" -p scholarly -M 2000
+
+Environment Variables:
+  YATTI_API_KEY               API key (alternative to config file)
+  YATTI_API_BASE              API base URL (default: $API_BASE)
+  VERBOSE                     Set to 1 for verbose output
+  OUTPUT_FORMAT               json|pretty (default: pretty)
+
+Configuration:
+  Config dir: $CONFIG_DIR
+  API key file: $API_KEY_FILE
+
+For more information, visit: https://yatti.id/admin/
+EOF
+}
+
+# Command: version
+cmd_version() {
+  echo "$SCRIPT_NAME $VERSION"
+  echo "API Base: $API_BASE"
+  local -- api_key
+  api_key=$(load_api_key)
+  if [[ -n "$api_key" ]]; then
+    echo "API Key: Configured (${api_key:0:20}...)"
+  else
+    echo 'API Key: Not configured'
+  fi
+}
+
+# Version comparison function
+version_compare() {
+  # Compare two version strings
+  # Returns: 0 if equal, 1 if $1 > $2, 2 if $1 < $2
+  local -- v1=$1
+  local -- v2=$2
+  
+  # Split versions into arrays
+  IFS='.' read -ra V1 <<< "$v1"
+  IFS='.' read -ra V2 <<< "$v2"
+  
+  # Pad arrays to same length
+  local -i max_len=$((${#V1[@]} > ${#V2[@]} ? ${#V1[@]} : ${#V2[@]}))
+  
+  for ((i=0; i<max_len; i+=1)); do
+    local -i num1="${V1[i]:-0}"
+    local -i num2="${V2[i]:-0}"
+    
+    if ((num1 > num2)); then
+      return 1
+    elif ((num1 < num2)); then
+      return 2
+    fi
+  done
+  
+  return 0
+}
+
+# Command: update
+cmd_update() {
+  local -i check_only=0 force=0
+  local -- temp_file=''
+
+  # Cleanup function for temporary files
+  cleanup_temp_file() {
+    [[ -n "$temp_file" ]] && [[ -f "$temp_file" ]] && rm -f "$temp_file" ||:
+  }
+  trap cleanup_temp_file EXIT INT TERM
+
+  # Check if this is a system-wide installation that will need sudo
+  local -- script_dir
+  script_dir=$(dirname -- "$SCRIPT_PATH")
+  local -i will_need_sudo=0
+
+  if [[ "$script_dir" == '/usr/local/bin' ]] || [[ "$script_dir" == "/usr/bin" ]] || [[ "$script_dir" == "/opt"* ]]; then
+    if [[ ! -w "$SCRIPT_PATH" ]] && ((EUID)); then
+      will_need_sudo=1
+    fi
+  fi
+
+  # Parse options
+  while (($#)); do
+    case $1 in
+      --check)
+        check_only=1
+        ;;
+      --force)
+        force=1
+        ;;
+      -h|--help)
+        echo "Usage: $SCRIPT_NAME update [options]"
+        echo
+        echo "Options:"
+        echo "  --check    Check for updates without installing"
+        echo "  --force    Force update even if version is current"
+        echo "  --help     Show this help message"
+        echo
+        echo "Note: If installed system-wide, you may need to run with sudo"
+        return 0
+        ;;
+      *)
+        die 22 "Unknown option ${1@Q}"
+        ;;
+    esac
+    shift
+  done
+  
+  info 'Checking for updates...'
+  
+  # Get latest version info from API
+  local -- version_response
+  version_response=$(api_request GET "/client/check-update?version=$VERSION" 2>/dev/null)
+  
+  [[ -n "$version_response" ]] || die 1 'Failed to check for updates'
+  
+  local -i update_available
+  local -- latest_version
+  update_available=$(echo "$version_response" | jq -r 'if (.data.update_available // false) then 1 else 0 end')
+  latest_version=$(echo "$version_response" | jq -r '.data.latest_version // ""')
+  
+  if ((update_available == 0 && force == 0)); then
+    success "You are running the latest version ($VERSION)"
+    return 0
+  fi
+  
+  if ((check_only)); then
+    if ((update_available)); then
+      info "Update available: $VERSION → v$latest_version"
+      echo
+      echo "Changelog:"
+      echo "$version_response" | jq -r '.data.changelog | to_entries[] | "  v\(.key):",.value.changes[]' 2>/dev/null
+      echo
+      echo "Run '$SCRIPT_NAME update' to install the update"
+    else
+      success "You are running the latest version ($VERSION)"
+    fi
+    return 0
+  fi
+  
+  # Perform update
+  if ((update_available || force)); then
+    if ((update_available)); then
+      info "Updating from $VERSION to $latest_version..."
+    else
+      info "Forcing reinstall of $VERSION..."
+    fi
+
+    # If we need sudo and don't have it, re-run with sudo
+    if ((will_need_sudo)); then
+      info "System-wide installation requires sudo privileges"
+      info "Re-running with sudo..."
+      # Rebuild the arguments to preserve flags
+      local -a update_args=()
+      ((force==0)) || update_args+=(--force)
+      ((check_only==0)) || update_args+=(--check)
+      exec sudo "$SCRIPT_PATH" update "${update_args[@]}"
+    fi
+    
+    # Check if we need sudo for system-wide installation
+    local -i needs_sudo=0
+    local -- script_dir
+    script_dir=$(dirname "$SCRIPT_PATH")
+    
+    # Check if script is in a system directory
+    if [[ "$script_dir" == "/usr/local/bin" ]] || [[ "$script_dir" == "/usr/bin" ]] || [[ "$script_dir" == "/opt"* ]]; then
+      # Check if we have write permission
+      [[ -w "$SCRIPT_PATH" ]] || needs_sudo=1
+    fi
+    
+    # Download new version to temp file
+    temp_file=$(mktemp /tmp/yatti-api.XXXXXX)
+    
+    info "Downloading new version..."
+    if ! curl -sfL "${API_BASE}/client/download" -o "$temp_file"; then
+      rm -f "$temp_file"
+      die 1 'Failed to download update'
+    fi
+    
+    # Verify download
+    if [[ ! -s "$temp_file" ]]; then
+      rm -f "$temp_file"
+      die 1 'Downloaded file is empty'
+    fi
+    
+    # Check if it's a valid bash script
+    if ! head -1 "$temp_file" | grep -q '^#!/'; then
+      rm -f "$temp_file"
+      die 1 'Downloaded file is not a valid bash script'
+    fi
+    
+    # Make executable with proper permissions
+    chmod 755 "$temp_file"
+    
+    # Handle update based on permissions
+    if ((needs_sudo)); then
+      # For system-wide installation, use sudo internally
+      info "System-wide installation detected. Using sudo for update..."
+
+      # Make backup with sudo
+      local -- backup_file="${SCRIPT_PATH}.backup"
+      if sudo cp "$SCRIPT_PATH" "$backup_file" 2>/dev/null; then
+        info "Backup saved to $backup_file"
+      fi
+
+      # Use sudo to move the file and set proper permissions
+      if sudo mv -f "$temp_file" "$SCRIPT_PATH" 2>/dev/null && sudo chmod 755 "$SCRIPT_PATH" 2>/dev/null; then
+        success "Update complete! Now running v$latest_version"
+
+        # If running interactively and not in a pipe, restart with new version
+        if [[ -t 1 ]] && [[ -t 0 ]]; then
+          info "Restarting with new version..."
+          exec "$SCRIPT_PATH" version
+        fi
+      else
+        error "Failed to update script at $SCRIPT_PATH"
+        error "This may require running: sudo $SCRIPT_NAME update"
+
+        # If not already running with sudo, suggest it
+        if [[ "$EUID" -ne 0 ]]; then
+          echo
+          echo "Alternatively, you can:"
+          echo "1. Run with sudo: sudo $SCRIPT_NAME update"
+          echo "2. Install in user directory:"
+          echo "   mkdir -p ~/bin"
+          echo "   cp $temp_file ~/bin/$SCRIPT_NAME && chmod 755 ~/bin/$SCRIPT_NAME"
+          echo "   export PATH=\"\$HOME/bin:\$PATH\""
+        fi
+        rm -f "$temp_file"
+        die 1 'Update failed'
+      fi
+      return 0
+    fi
+    
+    # Make backup of current script
+    local -- backup_file="${SCRIPT_PATH}.backup"
+    if cp "$SCRIPT_PATH" "$backup_file" 2>/dev/null; then
+      info "Backup saved to $backup_file"
+    fi
+    
+    # Replace current script (we have permission)
+    if mv -f "$temp_file" "$SCRIPT_PATH" 2>/dev/null && chmod 755 "$SCRIPT_PATH" 2>/dev/null; then
+      success "Update complete! Now running v$latest_version"
+
+      # If running interactively and not in a pipe, restart with new version
+      if [[ -t 1 ]] && [[ -t 0 ]]; then
+        info "Restarting with new version..."
+        exec "$SCRIPT_PATH" version
+      fi
+    else
+      error "Failed to update script at $SCRIPT_PATH"
+      error "Downloaded file available at: $temp_file"
+      return 1
+    fi
+  fi
+}
+
+# --------------------------------------------------------------------------------
+# Main
+# --------------------------------------------------------------------------------
+
+main() {
+  local -- command="${1:-help}"
+  shift || true
+
+  # Ensure config directory exists
+  mkdir -p "$CONFIG_DIR"
+  
+  case "$command" in
+    configure)
+      cmd_configure "$@"
+      ;;
+    status)
+      cmd_status "$@"
+      ;;
+    users)
+      cmd_users "$@"
+      ;;
+    kb|knowledgebases)
+      cmd_knowledgebases "$@"
+      ;;
+    query)
+      cmd_query "$@"
+      ;;
+    history)
+      cmd_history "$@"
+      ;;
+    get-query)
+      cmd_get_query "$@"
+      ;;
+    docs|doc|documentation)
+      cmd_docs "$@"
+      ;;
+    update)
+      cmd_update "$@"
+      ;;
+    help|-h|--help)
+      cmd_help
+      ;;
+    version|-V|--version)
+      cmd_version
+      ;;
+    *)
+      die 22 "Unknown command ${command@Q}" "Run '$SCRIPT_NAME help' for usage information"
+      ;;
+  esac
+}
+
+main "$@"
+#fin

@@ -1,0 +1,285 @@
+#!/bin/bash
+# shellcheck disable=SC2207
+# SC2207: Word splitting in compgen is intentional for bash completion.
+# This is the standard pattern for COMPREPLY array population in bash_completion.
+#
+# Bash completion for yatti-api v1.3.0
+#
+# Installation:
+#   1. Source this file in your .bashrc or .bash_profile:
+#      source /path/to/yatti-api.bash_completion
+#   2. Or copy to system completion directory:
+#      sudo cp yatti-api.bash_completion /etc/bash_completion.d/yatti-api
+#   3. Or for user installation:
+#      cp yatti-api.bash_completion ~/.local/share/bash-completion/completions/yatti-api
+#
+
+_yatti_api_completions() {
+  local cur prev words cword
+  _init_completion || return
+
+  local commands="configure status users knowledgebases kb query history get-query docs doc documentation update help version"
+  local status_subcommands="health info"
+  local users_subcommands="list get create update delete"
+  local kb_subcommands="list get sync"
+  local docs_subcommands="user api technical list help"
+  local update_options="--check --force --help"
+
+  # Available models for query command
+  local models="gpt-4o gpt-4o-mini gpt-4-turbo claude-3-opus claude-3-5-sonnet claude-3-haiku gemini-pro gemini-ultra"
+
+  # Available knowledge bases (common ones)
+  local common_kbs="appliedanthropology seculardharma okusiassociates wayang.net peraturan.go.id jakartapost prosocial.world garydean okusimail okusiresearch ollama uv"
+
+  # First level command completion
+  if [[ $cword -eq 1 ]]; then
+    COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+    return 0
+  fi
+
+  # Get the main command
+  local cmd="${words[1]}"
+
+  # Handle subcommands and options based on the main command
+  case "$cmd" in
+    configure)
+      # No additional completions for configure
+      return 0
+      ;;
+
+    status)
+      if [[ $cword -eq 2 ]]; then
+        COMPREPLY=($(compgen -W "$status_subcommands" -- "$cur"))
+      fi
+      return 0
+      ;;
+
+    users)
+      if [[ $cword -eq 2 ]]; then
+        COMPREPLY=($(compgen -W "$users_subcommands" -- "$cur"))
+        return 0
+      fi
+
+      # Handle user subcommand specific completions
+      local subcmd="${words[2]}"
+      case "$subcmd" in
+        get|update|delete)
+          if [[ $cword -eq 3 ]]; then
+            # Suggest user ID format
+            COMPREPLY=($(compgen -W "1 2 3 me" -- "$cur"))
+          fi
+          ;;
+        create)
+          if [[ $cword -eq 3 ]]; then
+            COMPREPLY=($(compgen -W '{"name":' -- "$cur"))
+          fi
+          ;;
+      esac
+      return 0
+      ;;
+
+    knowledgebases|kb)
+      if [[ $cword -eq 2 ]]; then
+        COMPREPLY=($(compgen -W "$kb_subcommands" -- "$cur"))
+        return 0
+      fi
+
+      local subcmd="${words[2]}"
+      case "$subcmd" in
+        get)
+          if [[ $cword -eq 3 ]]; then
+            # Try to fetch available knowledge bases
+            local kbs=""
+            if command -v yatti-api &>/dev/null; then
+              kbs=$(yatti-api kb list 2>/dev/null | grep -E '^[a-zA-Z]' | cut -d' ' -f1 | tr '\n' ' ' 2>/dev/null || echo "")
+            fi
+            if [[ -z "$kbs" ]]; then
+              # Fallback to common knowledge bases
+              kbs="$common_kbs"
+            fi
+            COMPREPLY=($(compgen -W "$kbs" -- "$cur"))
+          fi
+          ;;
+      esac
+      return 0
+      ;;
+
+    query)
+      # Handle query options
+      case "$prev" in
+        -K|--knowledgebase)
+          # Try to fetch available knowledge bases
+          local kbs=""
+          if command -v yatti-api &>/dev/null; then
+            kbs=$(yatti-api kb list 2>/dev/null | grep -E '^[a-zA-Z]' | cut -d' ' -f1 | tr '\n' ' ' 2>/dev/null || echo "")
+          fi
+          if [[ -z "$kbs" ]]; then
+            kbs="$common_kbs"
+          fi
+          COMPREPLY=($(compgen -W "$kbs" -- "$cur"))
+          return 0
+          ;;
+
+        -q|--query)
+          # No completion for query text
+          return 0
+          ;;
+
+        -k|--top-k)
+          COMPREPLY=($(compgen -W "1 3 5 10 15 20 50 100" -- "$cur"))
+          return 0
+          ;;
+
+        -t|--temperature)
+          COMPREPLY=($(compgen -W "0.0 0.1 0.3 0.5 0.7 0.9 1.0 1.5 2.0" -- "$cur"))
+          return 0
+          ;;
+
+        -m|--model)
+          COMPREPLY=($(compgen -W "$models" -- "$cur"))
+          return 0
+          ;;
+
+        -s|--context-scope)
+          COMPREPLY=($(compgen -W "1 2 3 4 5 7 10" -- "$cur"))
+          return 0
+          ;;
+
+        -M|--max-tokens)
+          COMPREPLY=($(compgen -W "500 1000 2000 4000 8000 16000" -- "$cur"))
+          return 0
+          ;;
+
+        -p|--prompt-template)
+          local templates="default instructive scholarly concise analytical conversational technical"
+          COMPREPLY=($(compgen -W "$templates" -- "$cur"))
+          return 0
+          ;;
+
+        --cache-ttl)
+          COMPREPLY=($(compgen -W "0 3600 86400 604800" -- "$cur"))
+          return 0
+          ;;
+      esac
+
+      # Complete options if current word starts with -
+      if [[ "$cur" == -* ]]; then
+        local query_opts="-K --knowledgebase -q --query -k --top-k -t --temperature"
+        query_opts="$query_opts -m --model -s --context-scope -f --force-refresh"
+        query_opts="$query_opts -c --context --context-only -M --max-tokens"
+        query_opts="$query_opts -p --prompt-template --cache-ttl -h --help"
+        COMPREPLY=($(compgen -W "$query_opts" -- "$cur"))
+        return 0
+      fi
+
+      # If no option flag, try to complete knowledge base name as first positional arg
+      local has_kb=0
+      local has_query=0
+      for ((i=2; i<cword; i++)); do
+        if [[ "${words[i]}" == "-K" ]] || [[ "${words[i]}" == "--knowledgebase" ]]; then
+          has_kb=1
+        elif [[ "${words[i]}" == "-q" ]] || [[ "${words[i]}" == "--query" ]]; then
+          has_query=1
+        elif [[ "${words[i]}" != -* ]] && [[ "${words[i-1]}" != -* ]]; then
+          if [[ $has_kb -eq 0 ]]; then
+            has_kb=1
+          elif [[ $has_query -eq 0 ]]; then
+            has_query=1
+          fi
+        fi
+      done
+
+      if [[ $has_kb -eq 0 ]]; then
+        # Complete knowledge base name
+        local kbs=""
+        if command -v yatti-api &>/dev/null; then
+          kbs=$(yatti-api kb list 2>/dev/null | grep -E '^[a-zA-Z]' | cut -d' ' -f1 | tr '\n' ' ' 2>/dev/null || echo "")
+        fi
+        if [[ -z "$kbs" ]]; then
+          kbs="$common_kbs"
+        fi
+        COMPREPLY=($(compgen -W "$kbs" -- "$cur"))
+      fi
+      return 0
+      ;;
+
+    history)
+      if [[ $cword -eq 2 ]]; then
+        # Suggest common limits
+        COMPREPLY=($(compgen -W "10 20 50 100" -- "$cur"))
+      elif [[ $cword -eq 3 ]]; then
+        # Complete knowledge base name for filtering
+        local kbs=""
+        if command -v yatti-api &>/dev/null; then
+          kbs=$(yatti-api kb list 2>/dev/null | grep -E '^[a-zA-Z]' | cut -d' ' -f1 | tr '\n' ' ' 2>/dev/null || echo "")
+        fi
+        if [[ -z "$kbs" ]]; then
+          kbs="$common_kbs"
+        fi
+        COMPREPLY=($(compgen -W "$kbs" -- "$cur"))
+      fi
+      return 0
+      ;;
+
+    get-query)
+      if [[ $cword -eq 2 ]]; then
+        # Could fetch recent query IDs if available
+        # For now, just provide example format
+        if [[ -z "$cur" ]]; then
+          COMPREPLY=("q_")
+        fi
+      fi
+      return 0
+      ;;
+
+    docs|doc|documentation)
+      if [[ $cword -eq 2 ]]; then
+        COMPREPLY=($(compgen -W "$docs_subcommands" -- "$cur"))
+      elif [[ $cword -eq 3 ]]; then
+        # Format options for docs
+        local prev_word="${words[2]}"
+        case "$prev_word" in
+          user|api|technical)
+            COMPREPLY=($(compgen -W "raw html" -- "$cur"))
+            ;;
+        esac
+      fi
+      return 0
+      ;;
+
+    update)
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "$update_options" -- "$cur"))
+      fi
+      return 0
+      ;;
+
+    help|version)
+      # No additional completions
+      return 0
+      ;;
+
+    *)
+      # Unknown command, suggest main commands
+      COMPREPLY=($(compgen -W "$commands" -- "$cur"))
+      return 0
+      ;;
+  esac
+}
+
+# Register the completion function for yatti-api command
+complete -F _yatti_api_completions yatti-api
+
+# Also register for the full path if it's in a known location
+if [[ -f /var/www/vhosts/yatti.id/html/v1/client/yatti-api ]]; then
+  complete -F _yatti_api_completions /var/www/vhosts/yatti.id/html/v1/client/yatti-api
+fi
+
+# Register for common installation paths
+for path in /usr/local/bin/yatti-api /usr/bin/yatti-api ~/bin/yatti-api ~/.local/bin/yatti-api; do
+  if [[ -f "$path" ]]; then
+    complete -F _yatti_api_completions "$path"
+  fi
+done
+
+#fin
