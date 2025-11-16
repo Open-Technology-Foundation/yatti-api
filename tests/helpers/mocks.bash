@@ -230,7 +230,7 @@ mock_api_query_response() {
     "response": "This is a test response to your query.",
     "metadata": {
       "cached": false,
-      "model": "gpt-4o",
+      "model": "gpt-5.1",
       "tokens": 150
     },
     "contexts": [

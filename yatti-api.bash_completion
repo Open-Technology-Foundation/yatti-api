@@ -3,7 +3,7 @@
 # SC2207: Word splitting in compgen is intentional for bash completion.
 # This is the standard pattern for COMPREPLY array population in bash_completion.
 #
-# Bash completion for yatti-api v1.3.0
+# Bash completion for yatti-api v1.4.0
 #
 # Installation:
 #   1. Source this file in your .bashrc or .bash_profile:
@@ -26,7 +26,7 @@ _yatti_api_completions() {
   local update_options="--check --force --help"
 
   # Available models for query command
-  local models="gpt-4o gpt-4o-mini gpt-4-turbo claude-3-opus claude-3-5-sonnet claude-3-haiku gemini-pro gemini-ultra"
+  local models="gpt-5.1 claude-haiku-4-5 claude-opus-4-1 claude-sonnet-4-5 gemini-pro gemini-ultra"
 
   # Available knowledge bases (common ones)
   local common_kbs="appliedanthropology seculardharma okusiassociates wayang.net peraturan.go.id jakartapost prosocial.world garydean okusimail okusiresearch ollama uv"
@@ -269,11 +269,6 @@ _yatti_api_completions() {
 
 # Register the completion function for yatti-api command
 complete -F _yatti_api_completions yatti-api
-
-# Also register for the full path if it's in a known location
-if [[ -f /var/www/vhosts/yatti.id/html/v1/client/yatti-api ]]; then
-  complete -F _yatti_api_completions /var/www/vhosts/yatti.id/html/v1/client/yatti-api
-fi
 
 # Register for common installation paths
 for path in /usr/local/bin/yatti-api /usr/bin/yatti-api ~/bin/yatti-api ~/.local/bin/yatti-api; do

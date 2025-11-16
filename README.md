@@ -1,67 +1,190 @@
 # YaTTi API Client
 
-Command-line interface for the YaTTi REST API - RAG (Retrieval Augmented Generation) for querying knowledgebases using various LLMs.
+**Access specialized knowledgebases with AI-powered queries**
+
+YaTTi gives you command-line access to curated knowledge domains using RAG (Retrieval Augmented Generation). Ask questions, get answers backed by authoritative sources across multiple specialized fields.
+
+## Available Knowledgebases
+
+Query these specialized knowledge domains:
+
+### Academic & Research
+- **appliedanthropology** - Applied anthropology research and practice
+- **prosocial.world** - Prosocial behavior and social evolution
+
+### Regional & Cultural
+- **jakartapost** - Indonesian news and current affairs (extensive archive)
+- **peraturan.go.id** - Indonesian laws and regulations
+- **wayang.net** - Indonesian shadow puppet theatre and culture
+
+### Professional & Technical
+- **okusiassociates** - Corporate services and Indonesian business operations
+
+### Personal & Philosophy
+- **seculardharma** - Secular Buddhist philosophy and mindfulness practice
+
+
+---
 
 ## Quick Start
 
-### Linux/macOS
+### One-Line Install
 
 ```bash
-# Install
+curl -fsSL https://raw.githubusercontent.com/Open-Technology-Foundation/yatti-api/main/install.sh | bash
+```
+
+Or install manually:
+
+```bash
 sudo curl -o /usr/local/bin/yatti-api https://yatti.id/v1/client/download
 sudo chmod +x /usr/local/bin/yatti-api
+```
 
-# Configure
+### First Query
+
+```bash
+# Configure your API key
 yatti-api configure
 
-# Use
-yatti-api query seculardharma "What is mindfulness?"
+# Try a query
+yatti-api query seculardharma "What is mindfulness meditation?"
+```
+
+### Windows Users
+
+**Using Windows?** See the [Windows Installation Guide](#windows-installation-wsl) below for WSL setup instructions.
+
+---
+
+## Example Queries
+
+### Ask About Indonesian Culture
+
+```bash
+# Explore wayang (shadow puppet) stories and characters
+yatti-api query wayang.net "Who is Arjuna in wayang stories?"
+
+# Current Indonesian news and analysis
+yatti-api query jakartapost "What are current Indonesian economic trends?"
+
+# Indonesian laws and regulations
+yatti-api query peraturan.go.id "What are the requirements for foreign investment?"
+```
+
+### Research & Academia
+
+```bash
+# Applied anthropology methods
+yatti-api query appliedanthropology "How is ethnography used in UX research?"
+
+# Social evolution and cooperation
+yatti-api query prosocial.world "What is multilevel selection theory?"
+```
+
+### Philosophy & Practice
+
+```bash
+# Buddhist philosophy and practice
+yatti-api query seculardharma "How does Buddhism approach suffering?"
+yatti-api query seculardharma "What is the difference between concentration and mindfulness?"
+```
+
+### Advanced Queries
+
+**Control the AI response:**
+
+```bash
+# Use more context sources
+yatti-api query jakartapost "Soeharto's legacy" --top-k 15
+
+# Scholarly writing style with extended response
+yatti-api query appliedanthropology "participant observation" -p scholarly -M 2000
+
+# Get source context only (no AI summary)
+yatti-api query peraturan.go.id "company formation" --context-only
+```
+
+**Note:** jakartapost is a very large knowledgebase - use longer timeouts for complex queries:
+
+```bash
+yatti-api query jakartapost "Jokowi presidency analysis" --timeout 300
 ```
 
 ---
 
 ## Features
 
-- **Query knowledgebases** using RAG with multiple LLM models
-- **Manage knowledgebases** - list, get info, sync
-- **Secure API key** management with proper file permissions
-- **Query history** - view past queries and results
-- **Multiple output formats** - pretty-print or JSON
-- **Self-updating** - check for and install updates automatically
-- **Context control** - retrieve source contexts without AI response
-- **Configurable** - temperature, top_k, models, templates
-- **Bash completion** - tab completion for all commands
-- **Built-in documentation** - access user/API/technical docs
+### RAG Query Engine
+- **Multiple LLM models** - OpenAI GPT, Anthropic Claude, Google Gemini
+- **Context control** - Adjust how much source material informs answers
+- **Source citation** - See exactly what informed the AI's response
+- **Caching** - Fast repeated queries with configurable TTL
+
+### Query Customization
+- **Temperature control** (0.0-2.0) - Balance creativity vs. precision
+- **Prompt templates** - scholarly, technical, conversational, concise, analytical
+- **Token limits** - Control response length
+- **Context-only mode** - Retrieve sources without AI interpretation
+
+### Knowledgebase Management
+- List available knowledgebases
+- View metadata and statistics
+- Sync updates from filesystem (admin)
+
+### Developer-Friendly
+- **JSON output** - Machine-readable responses
+- **Query history** - Review past queries
+- **Self-updating** - Automatic version management
+- **Bash completion** - Tab-complete commands and KB names
+- **Environment variables** - Scriptable configuration
 
 ---
 
 ## Installation
 
-### Linux/macOS
+### Linux / macOS
 
-**Download and install:**
+**Option 1: One-liner install (recommended)**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Open-Technology-Foundation/yatti-api/main/install.sh | bash
+```
+
+**Option 2: Manual install**
+
 ```bash
 sudo curl -o /usr/local/bin/yatti-api https://yatti.id/v1/client/download
 sudo chmod +x /usr/local/bin/yatti-api
-```
-
-**Configure API key:**
-```bash
 yatti-api configure
+yatti-api version  # Verify installation
 ```
 
-**Verify:**
+**Requirements:**
+- Bash 5.2+
+- curl
+- jq (for JSON parsing)
+
+**Installing dependencies:**
+
 ```bash
-yatti-api version
+# macOS
+brew install curl jq
+
+# Ubuntu/Debian
+sudo apt-get install curl jq
+
+# CentOS/RHEL
+sudo yum install curl jq
 ```
 
-### Windows (WSL)
+### Windows Installation (WSL)
 
-WSL (Windows Subsystem for Linux) provides a complete Linux environment on Windows. Once installed, use the Linux instructions above.
+Windows users should use WSL (Windows Subsystem for Linux) to run yatti-api. WSL provides a complete Linux environment on Windows.
 
 #### Step 1: Install WSL
 
-Open PowerShell as Administrator and run:
+Open PowerShell as Administrator:
 
 ```powershell
 wsl --install
@@ -71,7 +194,6 @@ Restart your computer when prompted.
 
 #### Step 2: Complete WSL Setup
 
-After restart:
 1. Open "Ubuntu" from the Start menu
 2. Create a username and password when prompted
 3. Wait for installation to complete
@@ -86,7 +208,13 @@ sudo apt-get update && sudo apt-get install -y curl jq
 
 #### Step 4: Install yatti-api
 
-In the WSL terminal:
+Use the one-liner install:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Open-Technology-Foundation/yatti-api/main/install.sh | bash
+```
+
+Or manual install:
 
 ```bash
 sudo curl -o /usr/local/bin/yatti-api https://yatti.id/v1/client/download
@@ -94,13 +222,11 @@ sudo chmod +x /usr/local/bin/yatti-api
 yatti-api configure
 ```
 
-#### Step 5: Verify Installation
+#### Verify Installation
 
 ```bash
 yatti-api version
 ```
-
-**Note:** Always use the WSL terminal (Ubuntu) to run yatti-api commands. The script runs natively in the Linux environment provided by WSL.
 
 #### Troubleshooting WSL
 
@@ -112,97 +238,64 @@ yatti-api version
 - Check Windows Features: Virtual Machine Platform and WSL are enabled
 - Run `wsl --update` in PowerShell as Administrator
 
-**Permission issues:**
-```bash
-sudo chmod +x /usr/local/bin/yatti-api
-```
+**Always use the WSL terminal (Ubuntu) to run yatti-api commands.**
 
 ---
 
-## Usage
+## Usage Reference
 
 ### Basic Commands
 
 ```bash
-# Show help
-yatti-api help
-
-# Check status
-yatti-api status
-
-# List knowledgebases
-yatti-api kb list
-
-# Query a knowledgebase
-yatti-api query seculardharma "What is mindfulness?"
-
-# View query history
-yatti-api history
-
-# Configure API key
-yatti-api configure
-
-# Check for updates
-yatti-api update --check
-
-# View documentation
-yatti-api docs
+yatti-api help                    # Show help
+yatti-api status                  # Check API status
+yatti-api kb list                 # List knowledgebases
+yatti-api query KB "question"     # Query a knowledgebase
+yatti-api history                 # View query history
+yatti-api configure               # Configure API key
+yatti-api update --check          # Check for updates
+yatti-api docs                    # View documentation
 ```
 
-### Query Examples
+### Query Command
 
-**Basic query:**
+**Syntax:**
+
 ```bash
-yatti-api query seculardharma "What is mindfulness?"
+yatti-api query [OPTIONS] <knowledgebase> "<query text>"
+# or
+yatti-api query -K <knowledgebase> -q "<query text>" [OPTIONS]
 ```
 
-**With options:**
-```bash
-yatti-api query -K jakartapost \
-  -q "Who is Soeharto?" \
-  --model gpt-4o \
-  --top-k 10 \
-  --temperature 0.7
-```
-
-**Context only (no AI response):**
-```bash
-yatti-api query -K wikipedia -q "Python programming" -c
-```
-
-**Scholarly style with more tokens:**
-```bash
-yatti-api query -K arxiv \
-  -q "Explain quantum computing" \
-  -p scholarly \
-  -M 2000
-```
-
-### Query Options
-
+**Options:**
 - `-K, --knowledgebase NAME` - Knowledgebase to query (required)
 - `-q, --query TEXT` - Query text (required)
-- `-k, --top-k NUM` - Number of contexts (default: 5)
+- `-k, --top-k NUM` - Number of context sources (default: 5)
 - `-t, --temperature NUM` - LLM temperature 0.0-2.0 (default: 0.0)
-- `-m, --model NAME` - LLM model (default: gpt-4o)
+- `-m, --model NAME` - LLM model (default: gpt-5.1)
 - `-s, --context-scope NUM` - Context segments per result (default: 3)
 - `-c, --context-only` - Return only context without AI response
 - `-M, --max-tokens NUM` - Maximum response tokens
 - `-p, --prompt-template NAME` - Prompt style (default, instructive, scholarly, concise, analytical, conversational, technical)
-- `-f, --force-refresh` - Skip cache and force new query
+- `-f, --force-refresh` - Skip cache, force new query
 - `--cache-ttl SECONDS` - Cache TTL in seconds (default: 86400)
 - `--timeout SECONDS` - Query timeout in seconds (default: 60, max: 600)
 
-### Other Commands
+**Available Models:**
+- **OpenAI:** gpt-5.1
+- **Anthropic:** claude-haiku-4-5, claude-opus-4-1, claude-sonnet-4-5
+- **Google:** gemini-pro, gemini-ultra
 
-**Knowledgebases:**
+### Knowledgebase Commands
+
 ```bash
 yatti-api kb list                    # List all knowledgebases
-yatti-api kb get seculardharma       # Get info about a KB
-yatti-api kb sync                    # Sync from filesystem
+yatti-api kb get seculardharma       # Get KB info and stats
+yatti-api kb sync                    # Sync from filesystem (admin)
 ```
 
-**History:**
+### History Commands
+
 ```bash
 yatti-api history                    # Last 20 queries
 yatti-api history 50                 # Last 50 queries
@@ -210,27 +303,22 @@ yatti-api history 20 jakartapost     # Last 20 from specific KB
 yatti-api get-query q_abc123         # Get specific query by ID
 ```
 
-**Documentation:**
+### Documentation
+
 ```bash
-yatti-api docs                       # User guide
+yatti-api docs                       # User guide (JSON)
+yatti-api docs user raw              # User guide (markdown)
+yatti-api docs user html             # Open in browser
 yatti-api docs api                   # API documentation
 yatti-api docs technical             # Developer docs
-yatti-api docs user raw              # Markdown format
-yatti-api docs user html             # Open in browser
 ```
 
-**Updates:**
+### Updates
+
 ```bash
 yatti-api update --check             # Check for updates
-yatti-api update                     # Install update if available
+yatti-api update                     # Install update
 yatti-api update --force             # Force reinstall
-```
-
-**Status:**
-```bash
-yatti-api status                     # Basic status
-yatti-api status health              # Health check
-yatti-api status info                # System info
 ```
 
 ---
@@ -239,12 +327,14 @@ yatti-api status info                # System info
 
 ### API Key
 
-**Interactive configuration:**
+**Interactive setup:**
+
 ```bash
 yatti-api configure
 ```
 
 **Environment variable:**
+
 ```bash
 export YATTI_API_KEY="your_api_key_here"
 ```
@@ -262,27 +352,16 @@ export YATTI_API_KEY="your_key"
 # API base URL (default: https://yatti.id/v1)
 export YATTI_API_BASE="https://custom.yatti.id/v1"
 
-# Verbose output (0=quiet, 1=verbose)
+# Verbose output
 export VERBOSE=1
 
 # Output format (pretty or json)
 export OUTPUT_FORMAT=json
 ```
 
----
+### Bash Completion
 
-## Available Models
-
-Latest LLMs from:
-- **OpenAI:** gpt-4o, gpt-4o-mini, gpt-4-turbo
-- **Anthropic:** claude-3-opus, claude-3-5-sonnet, claude-3-haiku
-- **Google:** gemini-pro, gemini-ultra
-
----
-
-## Bash Completion
-
-For bash completion support:
+Enable tab completion for commands, options, and knowledgebase names:
 
 ```bash
 # Source the completion file
@@ -292,26 +371,52 @@ source yatti-api.bash_completion
 sudo cp yatti-api.bash_completion /etc/bash_completion.d/yatti-api
 ```
 
-Then you can tab-complete commands, options, and even knowledgebase names!
-
 ---
 
-## Requirements
+## Troubleshooting
 
-### Linux/macOS/Windows (WSL)
-- Bash 5.2+
-- curl
-- jq (for JSON parsing)
+**Permission denied:**
+
+```bash
+sudo chmod +x /usr/local/bin/yatti-api
+```
+
+**curl or jq not found:**
+
+```bash
+# macOS
+brew install curl jq
+
+# Ubuntu/Debian
+sudo apt-get install curl jq
+
+# CentOS/RHEL
+sudo yum install curl jq
+```
+
+**API key not found:**
+
+```bash
+yatti-api configure
+```
+
+**Timeouts on large knowledgebases:**
+
+```bash
+# Use longer timeout for jakartapost
+yatti-api query jakartapost "your query" --timeout 300
+```
 
 ---
 
 ## Development
 
-### Structure
+### Project Structure
 
 ```
 yatti-api                       # Main bash script (~850 lines)
 yatti-api.bash_completion       # Bash completion
+install.sh                      # One-line installer
 tests/                          # Test suite
   ├── unit/                     # Unit tests
   ├── integration/              # Integration tests
@@ -345,33 +450,25 @@ See [tests/README.md](tests/README.md) for complete testing documentation.
 
 See [AUDIT-BASH.md](AUDIT-BASH.md) for detailed audit report.
 
+### Requirements
+
+- Bash 5.2+
+- curl
+- jq (for JSON parsing)
+
 ---
 
-## Troubleshooting
+## Contributing
 
-### Linux/macOS
+Contributions welcome! We especially appreciate:
+- Bug reports and fixes
+- Documentation improvements
+- New features
+- Testing and feedback
 
-**Permission denied:**
-```bash
-sudo chmod +x /usr/local/bin/yatti-api
-```
+**Repository:** https://github.com/Open-Technology-Foundation/yatti-api
 
-**curl or jq not found:**
-```bash
-# macOS
-brew install curl jq
-
-# Ubuntu/Debian
-sudo apt-get install curl jq
-
-# CentOS/RHEL
-sudo yum install curl jq
-```
-
-**API key not found:**
-```bash
-yatti-api configure
-```
+**Issues:** https://github.com/Open-Technology-Foundation/yatti-api/issues
 
 ---
 
@@ -379,15 +476,17 @@ yatti-api configure
 
 - **Documentation:** Run `yatti-api help` or `yatti-api docs`
 - **API Docs:** https://yatti.id/admin/
-- **Issues:** https://github.com/anthropics/claude-code/issues
+- **Issues:** https://github.com/Open-Technology-Foundation/yatti-api/issues
+- **Website:** https://yatti.id
 
 ---
 
 ## Version
 
-Current version: **1.3.6**
+Current version: **1.4.0**
 
 Check for updates:
+
 ```bash
 yatti-api update --check
 ```
@@ -396,19 +495,8 @@ yatti-api update --check
 
 ## License
 
-See project repository for license information.
-
----
-
-## Contributing
-
-Contributions welcome! Especially:
-- Bug reports and fixes
-- Documentation improvements
-- New features
-- Testing and feedback
+GPL-3. See LICENSE
 
 ---
 
 Visit https://yatti.id for more information.
-

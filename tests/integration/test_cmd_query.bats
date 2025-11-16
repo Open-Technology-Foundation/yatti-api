@@ -67,7 +67,7 @@ teardown() {
 @test "query command handles --model option" {
   set_mock_curl_response "$(jq -c '.query.success' "$FIXTURES_FILE")" "200"
 
-  run ./yatti-api query -K test_kb -q "test" -m gpt-4o-mini
+  run ./yatti-api query -K test_kb -q "test" -m claude-haiku-4-5
   [[ "$status" -eq 0 ]]
 }
 
@@ -112,7 +112,7 @@ teardown() {
 @test "query command handles multiple options together" {
   set_mock_curl_response "$(jq -c '.query.success' "$FIXTURES_FILE")" "200"
 
-  run ./yatti-api query -K test_kb -q "test" -k 5 -t 0.7 -m gpt-4o -s 3
+  run ./yatti-api query -K test_kb -q "test" -k 5 -t 0.7 -m gpt-5.1 -s 3
   [[ "$status" -eq 0 ]]
 }
 

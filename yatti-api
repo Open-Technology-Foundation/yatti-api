@@ -539,7 +539,7 @@ Commands:
 Query Examples:
   $SCRIPT_NAME query seculardharma "What is mindfulness?"
   $SCRIPT_NAME query -K jakartapost -q "Who is Soeharto?"
-  $SCRIPT_NAME query -K ollama -q "Explain LLMs" --model gpt-4o --top-k 10
+  $SCRIPT_NAME query -K ollama -q "Explain LLMs" --model gpt-5.1 --top-k 10
   $SCRIPT_NAME query -K wikipedia -q "Python programming" -c  # Context only
   $SCRIPT_NAME query -K arxiv -q "Quantum computing" -p scholarly -M 2000
 
