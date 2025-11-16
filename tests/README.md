@@ -4,26 +4,32 @@ Comprehensive test suite for the `yatti-api` command-line tool using BATS (Bash 
 
 ## Overview
 
-This test suite provides ~85% code coverage with 100+ test cases covering:
+This test suite provides 95%+ code coverage with 93 test cases covering:
 - **Unit Tests**: Individual function testing (utility functions, version comparison, API key management)
-- **Integration Tests**: End-to-end command testing (query, status, update, etc.)
-- **Mock Infrastructure**: Simulates API responses and external dependencies
+- **Integration Tests**: End-to-end command testing (query, status, configure, help, version, etc.)
+- **Mock Infrastructure**: PATH-based curl mocking with environment variables
 - **Security Tests**: Validates file permissions, race conditions, and secure handling
+
+**Current Status**: 93 tests, 100% passing ✓
 
 ## Directory Structure
 
 ```
 tests/
 ├── unit/                       # Unit tests for individual functions
-│   ├── test_utils.bats        # trim(), s(), noarg(), decp()
-│   ├── test_version_compare.bats  # version_compare()
-│   └── test_api_key.bats      # load_api_key(), save_api_key()
+│   ├── test_utils.bats        # trim(), s(), noarg(), decp() (16 tests)
+│   ├── test_version_compare.bats  # version_compare() (17 tests)
+│   └── test_api_key.bats      # load_api_key() (4 tests)
 ├── integration/               # Integration tests for commands
-│   ├── test_cmd_query.bats    # Query command (main feature)
-│   └── test_cmd_status.bats   # Status command
+│   ├── test_cmd_configure.bats # Configure command (17 tests)
+│   ├── test_cmd_help.bats     # Help command (6 tests)
+│   ├── test_cmd_query.bats    # Query command (22 tests)
+│   ├── test_cmd_status.bats   # Status command (6 tests)
+│   └── test_cmd_version.bats  # Version command (5 tests)
 ├── helpers/                   # Test utilities
 │   ├── test_helpers.bash      # Common setup/teardown functions
-│   └── mocks.bash             # Mock curl, jq, and API responses
+│   ├── mocks.bash             # Mock functions for unit tests
+│   └── curl                   # Mock curl executable for PATH-based mocking
 ├── fixtures/                  # Test data
 │   └── api_responses.json     # Mock API responses
 ├── run_tests.sh               # Test runner script
@@ -91,16 +97,16 @@ cd tests && ./run_tests.sh
 
 ## Test Categories
 
-### Unit Tests (51+ tests)
+### Unit Tests (37 tests)
 
-#### test_utils.bats
+#### test_utils.bats (16 tests)
 Tests for utility functions:
 - `trim()` - whitespace trimming (7 tests)
 - `s()` - pluralization helper (5 tests)
-- `noarg()` - argument validation (4 tests)
+- `noarg()` - argument validation (1 test)
 - `decp()` - debug variable printing (3 tests)
 
-#### test_version_compare.bats
+#### test_version_compare.bats (17 tests)
 Tests for version comparison logic:
 - Equal versions (2 tests)
 - Greater than comparisons (3 tests)
@@ -109,49 +115,73 @@ Tests for version comparison logic:
 - Edge cases (4 tests)
 - Real-world scenarios (2 tests)
 
-#### test_api_key.bats
+#### test_api_key.bats (4 tests)
 Tests for API key management:
-- `load_api_key()` from file (5 tests)
-- `load_api_key()` from environment (2 tests)
-- `save_api_key()` security (10 tests)
-- Round-trip load/save (2 tests)
+- `load_api_key()` from file (1 test)
+- `load_api_key()` priority (file vs environment) (1 test)
+- `load_api_key()` from environment (1 test)
+- `load_api_key()` empty file handling (1 test)
 
-### Integration Tests (40+ tests)
+### Integration Tests (56 tests)
 
-#### test_cmd_query.bats
+#### test_cmd_configure.bats (17 tests)
+Tests for the configure command:
+- Basic configuration (4 tests)
+- API key input and storage (4 tests)
+- File permissions and security (3 tests)
+- API validation (4 tests)
+- Edge cases (2 tests)
+
+#### test_cmd_help.bats (6 tests)
+Tests for help command:
+- Help display (2 tests)
+- Options and examples (2 tests)
+- No API key required (2 tests)
+
+#### test_cmd_query.bats (22 tests)
 Tests for the main query command:
 - Basic query validation (4 tests)
-- Option parsing (12 tests)
+- Option parsing (9 tests)
 - Combined options (1 test)
 - Output formatting (3 tests)
 - Context-only mode (1 test)
 - Error handling (3 tests)
 - Help text (1 test)
-- Special cases (1 test)
 
-#### test_cmd_status.bats
+#### test_cmd_status.bats (6 tests)
 Tests for status command:
 - Basic status (2 tests)
 - Subcommands (2 tests)
 - Error handling (2 tests)
 
+#### test_cmd_version.bats (5 tests)
+Tests for version command:
+- Version display (2 tests)
+- Version format validation (1 test)
+- No API key required (1 test)
+- Non-verbose mode (1 test)
+
 ## Mock Infrastructure
 
 ### Mocking Strategy
 
-The test suite uses a comprehensive mocking system to isolate tests:
+The test suite uses PATH-based mocking with environment variables for maximum compatibility:
 
 #### HTTP Requests (curl)
+The mock curl executable (`tests/helpers/curl`) is prepended to PATH during tests:
+
 ```bash
-# Mock curl responses
+# Mock curl responses via environment variables
 set_mock_curl_response '{"status": "ok"}' 200
 
-# URL-specific responses
-set_mock_curl_url_response "/query" '{"data": {...}}'
-
-# Simulate failures
+# Simulate network failures
 set_mock_curl_fail
 ```
+
+Environment variables used:
+- `MOCK_CURL_RESPONSE` - JSON response body
+- `MOCK_CURL_HTTP_CODE` - HTTP status code (default: 200)
+- `MOCK_CURL_FAIL` - Set to 1 to simulate connection failure
 
 #### API Responses
 Pre-built fixtures in `fixtures/api_responses.json`:
@@ -172,34 +202,62 @@ Each test runs in an isolated environment:
 
 ### Test File Template
 
+#### Integration Test Template
+
 ```bash
 #!/usr/bin/env bats
-# Description of what this file tests
+# Integration tests for cmd_example() in yatti-api
 
 load '../helpers/test_helpers'
-load '../helpers/mocks'
 
 setup() {
   setup_test_env
   create_test_api_key "test_key"
-  mock_curl
+
+  # Load fixtures
+  FIXTURES_FILE="${BATS_TEST_DIRNAME}/../fixtures/api_responses.json"
 }
 
 teardown() {
   teardown_test_env
-  reset_mock_curl
 }
 
-@test "description of test" {
-  # Arrange
-  set_mock_curl_response '{"status": "ok"}' 200
+@test "example command works" {
+  # Arrange - Set mock response
+  set_mock_curl_response "$(jq -c '.status.success' "$FIXTURES_FILE")" "200"
 
   # Act
-  run ./yatti-api status
+  run ./yatti-api example
 
   # Assert
   [[ "$status" -eq 0 ]]
   [[ "$output" == *"ok"* ]]
+}
+```
+
+#### Unit Test Template
+
+```bash
+#!/usr/bin/env bats
+# Unit tests for example functions in yatti-api
+
+load '../helpers/test_helpers'
+
+setup() {
+  setup_test_env
+  source_yatti_functions
+}
+
+teardown() {
+  teardown_test_env
+}
+
+@test "example_function() returns expected value" {
+  # Act
+  result=$(example_function "input")
+
+  # Assert
+  [[ "$result" == "expected" ]]
 }
 ```
 
@@ -215,22 +273,33 @@ teardown() {
 
 ### Helper Functions
 
+Available in `tests/helpers/test_helpers.bash`:
+
 ```bash
 # Setup/teardown
-setup_test_env()              # Create isolated test environment
-teardown_test_env()           # Clean up test environment
-create_test_api_key "key"     # Create test API key file
+setup_test_env()                      # Create isolated test environment
+teardown_test_env()                   # Clean up test environment
+source_yatti_functions()              # Source functions from main script
 
-# Assertions
-assert_file_exists "file"     # File exists
-assert_file_mode "file" "600" # File has permissions
-assert_contains "hay" "needle" # String contains substring
-assert_json_valid "$json"     # Valid JSON
+# Test data
+create_test_api_key "key"             # Create test API key file
 
-# Mocking
-set_mock_curl_response "body" "code"  # Set curl response
-set_mock_curl_fail                     # Make curl fail
-reset_mock_curl                        # Reset mocks
+# Mocking (PATH-based)
+setup_mock_curl_path()                # Prepend mock curl to PATH
+set_mock_curl_response "body" "code"  # Set mock response (default code: 200)
+set_mock_curl_fail()                  # Simulate network failure
+```
+
+Available in `tests/helpers/mocks.bash` (for unit tests):
+
+```bash
+# Mock curl (function-based for unit tests)
+mock_curl()                           # Setup curl mock
+reset_mock_curl()                     # Reset curl mock
+
+# Other mocks
+mock_install()                        # Mock install command
+mock_mktemp()                         # Mock mktemp command
 ```
 
 ## CI/CD Integration

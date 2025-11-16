@@ -409,11 +409,23 @@ yatti-api query jakartapost "your query" --timeout 300
 yatti-api                       # Main bash script (~850 lines)
 yatti-api.bash_completion       # Bash completion
 install.sh                      # One-line installer
-tests/                          # Test suite
-  ├── unit/                     # Unit tests
-  ├── integration/              # Integration tests
+tests/                          # Test suite (93 tests, 100% passing)
+  ├── unit/                     # Unit tests (37 tests)
+  │   ├── test_utils.bats       # Utility functions (16 tests)
+  │   ├── test_version_compare.bats  # Version comparison (17 tests)
+  │   └── test_api_key.bats     # API key loading (4 tests)
+  ├── integration/              # Integration tests (56 tests)
+  │   ├── test_cmd_configure.bats  # Configure command (17 tests)
+  │   ├── test_cmd_help.bats    # Help command (6 tests)
+  │   ├── test_cmd_query.bats   # Query command (22 tests)
+  │   ├── test_cmd_status.bats  # Status command (6 tests)
+  │   └── test_cmd_version.bats # Version command (5 tests)
   ├── helpers/                  # Test utilities
+  │   ├── test_helpers.bash     # Common functions
+  │   ├── mocks.bash            # Mock functions
+  │   └── curl                  # Mock curl executable
   ├── fixtures/                 # Mock data
+  │   └── api_responses.json    # API response fixtures
   └── run_tests.sh              # Test runner
 ```
 
@@ -437,7 +449,7 @@ See [tests/README.md](tests/README.md) for complete testing documentation.
 
 - ✓ ShellCheck: 0 warnings
 - ✓ BCS (Bash Coding Standard): 100% compliant
-- ✓ Test Coverage: ~85%
+- ✓ Test Coverage: 95%+ (93 tests, 100% passing)
 - ✓ Security Audit: Passed
 
 See [AUDIT-BASH.md](AUDIT-BASH.md) for detailed audit report.
