@@ -260,7 +260,7 @@ cmd_knowledgebases() {
 
 # Command: query
 cmd_query() {
-  local -- kb_name='' query_text='' temperature='0.0' model='gpt-5.1'
+  local -- kb_name='' query_text='' query_file='' temperature='0.0' model='gpt-5.1'
   local -i force_refresh=0 context_only=0
   local -i cache_ttl=86400
   local -- max_tokens='' prompt_template=''
@@ -270,7 +270,13 @@ cmd_query() {
     -K|--knowledgebase)
       noarg "$@"; shift; kb_name=$1 ;;
     -q|--query)
-      noarg "$@"; shift; query_text=$1 ;;
+      # Allow "-" as stdin indicator, otherwise validate
+      if (($# < 2)); then
+        die 2 "Missing argument for option ${1@Q}"
+      fi
+      shift; query_text=$1 ;;
+    -Q|--query-file)
+      noarg "$@"; shift; query_file=$1 ;;
     -k|--top-k)
       noarg "$@"; shift; top_k=$1 ;;
     -t|--temperature)
@@ -297,7 +303,8 @@ Usage: $SCRIPT_NAME query [options]
 
 Options:"
   -K, --knowledgebase NAME   Knowledgebase to query (required)
-  -q, --query TEXT           Query text (required)
+  -q, --query TEXT           Query text (required, use "-" for stdin)
+  -Q, --query-file FILE      Read query from file
   -k, --top-k NUM            Number of contexts to retrieve (default: $top_k)
   -t, --temperature NUM      LLM temperature 0.0-2.0 (default: $temperature)
   -m, --model NAME           LLM model (default: $model)
@@ -315,7 +322,7 @@ Available models: All latest LLMs from OpenAI, Anthropic, and Google
 EOT
         return 0
         ;;
-    -[KqktmscMpfh]*)
+    -[KqQktmscMpfh]*)
        #shellcheck disable=SC2046    # Handle combined short options
        set -- '' $(printf -- '-%c ' $(grep -o . <<<"${1:1}")) "${@:2}" ;;
     -*)
@@ -333,8 +340,33 @@ EOT
   
   # Validate required parameters
   [[ -n "$kb_name" ]] || die 2 'Knowledgebase name required' "Usage: $SCRIPT_NAME query -K <knowledgebase> -q <query>"
+
+  # Handle different query input methods
+  if [[ -n "$query_file" ]]; then
+    # Read from file
+    [[ -f "$query_file" ]] || die 2 "Query file not found: ${query_file@Q}"
+    query_text=$(cat "$query_file")
+    info "Read query from file (${#query_text} characters)"
+  elif [[ "$query_text" == "-" ]]; then
+    # Read from stdin explicitly
+    query_text=$(cat)
+    info "Read query from stdin (${#query_text} characters)"
+  elif [[ -z "$query_text" ]] && [[ ! -t 0 ]]; then
+    # Auto-detect stdin when no query given and stdin is piped
+    query_text=$(cat)
+    info "Read query from stdin (${#query_text} characters)"
+  fi
+
+  # Validate query text is not empty
   [[ -n "$query_text" ]] || die 2 'Query text required' "Usage: $SCRIPT_NAME query <knowledgebase> <query>"
-  
+
+  # Warn about large queries
+  if ((${#query_text} > 100000)); then
+    warn "Very large query (${#query_text} characters). Consider using --timeout for longer processing."
+  elif ((${#query_text} > 10000)); then
+    info "Processing large query (${#query_text} characters)..."
+  fi
+
   # Auto-suggest higher timeout for large knowledgebases
   if [[ "$kb_name" == jakartapost ]] && ((timeout < 300)); then
     info 'Note: jakartapost is a large knowledgebase. Consider using --timeout 300 for better results.'
