@@ -11,6 +11,14 @@ declare -r SCRIPT_NAME=${SCRIPT_PATH##*/}
 
 # Configuration constants
 declare -r API_BASE="${YATTI_API_BASE:-https://yatti.id/v1}"
+# Validate API_BASE if overridden (security: prevent endpoint hijacking)
+# Skip validation in test mode (YATTI_TEST_MODE=1)
+if [[ -n "${YATTI_API_BASE:-}" ]] && [[ "${YATTI_TEST_MODE:-0}" != "1" ]]; then
+  [[ "$YATTI_API_BASE" =~ ^https://yatti\.id(/|$) ]] || {
+    echo "Error: YATTI_API_BASE must be https://yatti.id" >&2
+    exit 1
+  }
+fi
 declare -r CONFIG_DIR="$HOME"/.config/"$SCRIPT_NAME"
 declare -r API_KEY_FILE="$CONFIG_DIR"/api_key
 
@@ -75,6 +83,31 @@ yn() {
   [[ ${REPLY,,} == y ]]
 }
 
+# Validate URL path segment (prevent path traversal and injection)
+# Allowed: alphanumeric, dot, dash, underscore
+# Rejects: slashes, query strings, spaces, null bytes
+validate_path_segment() {
+  local -- segment=$1 name=${2:-parameter}
+  [[ -n "$segment" ]] || die 2 "$name is required"
+  if [[ ! "$segment" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+    die 22 "Invalid $name: contains disallowed characters" \
+      "Allowed: letters, numbers, dots, dashes, underscores"
+  fi
+}
+
+# Validate query string parameter
+validate_query_param() {
+  local -- value=$1 name=${2:-parameter} type=${3:-string}
+  case "$type" in
+    integer)
+      [[ "$value" =~ ^[0-9]+$ ]] || die 22 "Invalid $name: must be a positive integer"
+      ;;
+    string)
+      [[ ! "$value" =~ [^a-zA-Z0-9._-] ]] || die 22 "Invalid $name: contains disallowed characters"
+      ;;
+  esac
+}
+
 # --------------------------------------------------------------------------------
 # Core functions
 # --------------------------------------------------------------------------------
@@ -94,7 +127,8 @@ load_api_key() {
 save_api_key() {
   local -- api_key=$1
   # Ensure config directory exists
-  mkdir -p "$CONFIG_DIR"
+  #shellcheck disable=SC2174  # -m only applies to deepest dir, which is intentional
+  mkdir -p -m 700 "$CONFIG_DIR"
   # Atomic creation with correct permissions to prevent race condition
   install -m 600 /dev/null "$API_KEY_FILE"
   echo "$api_key" > "$API_KEY_FILE"
@@ -122,7 +156,7 @@ api_request() {
   local -- http_code
   
   # Make request and capture both response and HTTP code
-  response=$(curl -s -w "\n__HTTP_CODE__%{http_code}" \
+  response=$(curl -sf -w "\n__HTTP_CODE__%{http_code}" \
     -X "$method" \
     "${headers[@]}" \
     "${curl_args[@]}" \
@@ -209,6 +243,7 @@ cmd_users() {
     get)
       user_id="${2:-}"
       [[ -n "$user_id" ]] || die 2 'User ID required'
+      validate_path_segment "$user_id" "user ID"
       api_request GET /users/"$user_id" | format_json
       ;;
     create)
@@ -221,11 +256,13 @@ cmd_users() {
       json_data="${3:-}"
       [[ -n "$user_id" ]] || die 2 'User ID required'
       [[ -n "$json_data" ]] || die 2 'User data required'
+      validate_path_segment "$user_id" "user ID"
       api_request PUT /users/"$user_id" -d "$json_data" | format_json
       ;;
     delete)
       user_id="${2:-}"
       [[ -n "$user_id" ]] || die 2 'User ID required'
+      validate_path_segment "$user_id" "user ID"
       api_request DELETE /users/"$user_id" | format_json
       ;;
     *)
@@ -246,6 +283,7 @@ cmd_knowledgebases() {
     get)
       kb_name="${2:-}"
       [[ -n "$kb_name" ]] || die 2 'Knowledgebase name required'
+      validate_path_segment "$kb_name" "knowledgebase name"
       api_request GET /knowledgebases/"$kb_name" | format_json
       ;;
     sync)
@@ -450,7 +488,11 @@ EOT
 # Command: history
 cmd_history() {
   local -- limit="${1:-20}" kb_filter="${2:-}"
-  
+
+  # Validate query parameters
+  validate_query_param "$limit" "limit" "integer"
+  [[ -z "$kb_filter" ]] || validate_path_segment "$kb_filter" "knowledgebase filter"
+
   local -- params="?limit=$limit"
   [[ -z "$kb_filter" ]] || params="${params}&knowledgebase=$kb_filter"
 
@@ -462,7 +504,8 @@ cmd_history() {
 cmd_get_query() {
   local -- query_id="${1:-}"
   [[ -n "$query_id" ]] || die 2 'Query ID required'
-  
+  validate_path_segment "$query_id" "query ID"
+
   api_request GET /query/"$query_id" | format_json
 }
 
@@ -475,7 +518,7 @@ cmd_docs() {
     user|'')
       info 'Fetching user documentation...'
       if [[ "$format" == "raw" ]]; then
-        curl -s "$API_BASE"/docs/raw
+        curl -sf "$API_BASE"/docs/raw
       elif [[ "$format" == html ]]; then
         info 'Opening documentation in browser...'
         if command -v xdg-open &> /dev/null; then
@@ -630,14 +673,81 @@ version_compare() {
   return 0
 }
 
+# GPG signature verification for updates
+# Returns: 0=verified, 1=unavailable (proceed with warning), 2=failed (abort)
+import_update_pubkey() {
+  local -- pubkey_cache="${CONFIG_DIR}/pubkey.asc"
+
+  # Use cached key if it exists and is recent (7 days)
+  if [[ -f "$pubkey_cache" ]]; then
+    local -i cache_age
+    cache_age=$(( $(date +%s) - $(stat -c %Y "$pubkey_cache" 2>/dev/null || echo 0) ))
+    if ((cache_age < 604800)); then
+      return 0
+    fi
+  fi
+
+  # Download public key from API
+  if curl -sfL "${API_BASE}/client/pubkey" -o "$pubkey_cache" 2>/dev/null; then
+    # Verify it's a valid GPG key format
+    if grep -q 'BEGIN PGP PUBLIC KEY' "$pubkey_cache" 2>/dev/null; then
+      gpg --batch --import "$pubkey_cache" 2>/dev/null
+      return 0
+    else
+      rm -f "$pubkey_cache"
+      return 1
+    fi
+  fi
+  return 1
+}
+
+verify_update_signature() {
+  local -- script_file=$1
+  local -- sig_file="${script_file}.sig"
+
+  # Check gpg is available
+  if ! command -v gpg &>/dev/null; then
+    warn 'GPG not installed - signature verification skipped'
+    return 1
+  fi
+
+  # Download signature (soft fail if not available)
+  if ! curl -sfL "${API_BASE}/client/download.sig" -o "$sig_file" 2>/dev/null; then
+    rm -f "$sig_file"
+    return 1  # Signature not available from server
+  fi
+
+  # Check signature file is not empty
+  if [[ ! -s "$sig_file" ]]; then
+    rm -f "$sig_file"
+    return 1
+  fi
+
+  # Import/refresh public key
+  if ! import_update_pubkey; then
+    rm -f "$sig_file"
+    return 1  # Public key not available
+  fi
+
+  # Verify signature
+  if gpg --batch --quiet --verify "$sig_file" "$script_file" 2>/dev/null; then
+    rm -f "$sig_file"
+    return 0  # Verified successfully
+  else
+    rm -f "$sig_file"
+    return 2  # Verification failed - DO NOT proceed
+  fi
+}
+
 # Command: update
 cmd_update() {
   local -i check_only=0 force=0
   local -- temp_file=''
 
   # Cleanup function for temporary files
+  # Note: Use ${temp_file:-} to handle case where local var is out of scope
   cleanup_temp_file() {
-    if [[ -n "$temp_file" && -f "$temp_file" ]]; then
+    if [[ -n "${temp_file:-}" && -f "${temp_file:-}" ]]; then
       rm -f "$temp_file"
     fi
   }
@@ -766,7 +876,21 @@ cmd_update() {
     
     # Make executable with proper permissions
     chmod 755 "$temp_file"
-    
+
+    # GPG signature verification (soft fail if unavailable)
+    local -i sig_result=0
+    verify_update_signature "$temp_file" || sig_result=$?
+
+    case $sig_result in
+      0) info 'GPG signature verified' ;;
+      1) warn 'Signature verification unavailable - proceeding without verification' ;;
+      2) rm -f "$temp_file"
+         die 1 'GPG signature verification failed - update aborted for security' ;;
+    esac
+
+    # Security check: refuse to update if script path is a symlink
+    [[ -L "$SCRIPT_PATH" ]] && die 1 "Cannot update: $SCRIPT_PATH is a symlink"
+
     # Handle update based on permissions
     if ((needs_sudo)); then
       # For system-wide installation, use sudo internally
@@ -839,8 +963,9 @@ main() {
   shift || true
 
   # Ensure config directory exists
-  mkdir -p "$CONFIG_DIR"
-  
+  #shellcheck disable=SC2174  # -m only applies to deepest dir, which is intentional
+  mkdir -p -m 700 "$CONFIG_DIR"
+
   case "$command" in
     configure)
       cmd_configure "$@"

@@ -24,6 +24,22 @@ fi
 echo "Downloading yatti-api..."
 $SUDO curl -fsSL -o /usr/local/bin/yatti-api https://yatti.id/v1/client/download
 
+# Verify checksum (soft failure - warns if verification unavailable or fails)
+echo "Verifying download..."
+EXPECTED_CHECKSUM=$(curl -fsSL https://yatti.id/v1/client/checksum 2>/dev/null || echo "")
+if [[ -n "$EXPECTED_CHECKSUM" ]]; then
+  ACTUAL_CHECKSUM=$($SUDO sha256sum /usr/local/bin/yatti-api 2>/dev/null | cut -d' ' -f1)
+  if [[ "$ACTUAL_CHECKSUM" != "$EXPECTED_CHECKSUM" ]]; then
+    echo "${YELLOW}▲ Warning: Checksum verification failed${NC}" >&2
+    echo "  Expected: $EXPECTED_CHECKSUM" >&2
+    echo "  Actual:   $ACTUAL_CHECKSUM" >&2
+  else
+    echo "Checksum verified."
+  fi
+else
+  echo "${YELLOW}▲ Checksum verification unavailable${NC}"
+fi
+
 echo "Setting permissions..."
 $SUDO chmod +x /usr/local/bin/yatti-api
 
