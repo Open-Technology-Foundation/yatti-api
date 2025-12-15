@@ -383,6 +383,8 @@ EOT
   if [[ -n "$query_file" ]]; then
     # Read from file
     [[ -f "$query_file" ]] || die 2 "Query file not found: ${query_file@Q}"
+    # Security: warn about symlinks (could point to sensitive files)
+    [[ -L "$query_file" ]] && warn "Query file is a symlink - ensure target is intended"
     query_text=$(cat "$query_file")
     info "Read query from file (${#query_text} characters)"
   elif [[ "$query_text" == "-" ]]; then
@@ -639,7 +641,7 @@ cmd_version() {
   local -- api_key
   api_key=$(load_api_key)
   if [[ -n "$api_key" ]]; then
-    echo "API Key: Configured (${api_key:0:20}...)"
+    echo "API Key: Configured (****${api_key: -4})"
   else
     echo 'API Key: Not configured'
   fi
@@ -854,7 +856,7 @@ cmd_update() {
     fi
     
     # Download new version to temp file
-    temp_file=$(mktemp /tmp/yatti-api.XXXXXX)
+    temp_file=$(mktemp "${TMPDIR:-/tmp}/yatti-api.XXXXXX")
     
     info "Downloading new version..."
     if ! curl -sfL "${API_BASE}/client/download" -o "$temp_file"; then
