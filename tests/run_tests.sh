@@ -12,7 +12,9 @@ declare -r CYAN=$'\033[0;36m'
 declare -r NC=$'\033[0m'
 
 # Script directory
+#shellcheck disable=SC2155  # Combined declaration intentional for readonly paths
 declare -r SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#shellcheck disable=SC2155
 declare -r PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Test configuration
