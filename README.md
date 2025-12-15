@@ -6,7 +6,7 @@ YaTTi gives you command-line access to curated knowledge domains using sophistic
 
 ## Table of Contents
 
-- [What's New in v1.4.0](#whats-new-in-v140) ◉ **Unlimited query sizes**
+- [What's New in v1.4.0](#whats-new-in-v140) ◉ **Unlimited query sizes & security enhancements**
 - [Available Knowledgebases](#available-knowledgebases)
 - [Quick Start](#quick-start)
 - [Example Queries](#example-queries)
@@ -48,6 +48,18 @@ cat document.txt | yatti-api query kb -q -
 **Backward Compatible:** All existing commands continue to work exactly as before.
 
 See the [Large Query Input](#large-query-input) section for complete documentation.
+
+### ◉ Security Enhancements
+
+Version 1.4.0 includes significant security improvements:
+
+- **URL validation** - API base URL is validated to prevent endpoint hijacking
+- **GPG signature verification** - Update downloads are verified with GPG signatures when available
+- **Path traversal prevention** - Input validation blocks malicious path segments
+- **Secure temp files** - Uses `TMPDIR` with unique filenames for temporary operations
+- **Masked API key** - API keys are partially masked in version output (shows only last 4 characters)
+- **Symlink warnings** - Warns when query files are symlinks to prevent unintended file access
+- **Atomic file operations** - API key file creation uses secure atomic patterns
 
 ---
 
@@ -555,7 +567,7 @@ yatti-api query -K <knowledgebase> -q - [OPTIONS]
 **Query Processing Options:**
 - `-k, --top-k NUM` - Number of context sources (default: 5)
 - `-t, --temperature NUM` - LLM temperature 0.0-2.0 (default: 0.0)
-- `-m, --model NAME` - LLM model (default: gpt-5.1)
+- `-m, --model NAME` - LLM model (default: gpt-5.2)
 - `-s, --context-scope NUM` - Context segments per result (default: 3)
 - `-c, --context-only` - Return only context without AI response
 - `-M, --max-tokens NUM` - Maximum response tokens
@@ -565,7 +577,7 @@ yatti-api query -K <knowledgebase> -q - [OPTIONS]
 - `--timeout SECONDS` - Query timeout in seconds (default: 60, max: 600)
 
 **Available Models:**
-- **OpenAI:** gpt-5.1
+- **OpenAI:** gpt-5.2 (default), and other GPT models
 - **Anthropic:** claude-haiku-4-5, claude-opus-4-1, claude-sonnet-4-5
 - **Google:** gemini-pro, gemini-ultra
 
@@ -707,19 +719,28 @@ cat long_query.txt | yatti-api query seculardharma -q -
 ### Project Structure
 
 ```
-yatti-api                       # Main bash script (~850 lines)
+yatti-api                       # Main bash script (~1000 lines)
 yatti-api.bash_completion       # Bash completion
 install.sh                      # One-line installer
-tests/                          # Test suite (93 tests, 100% passing)
-  ├── unit/                     # Unit tests (37 tests)
+tests/                          # Test suite (188 tests)
+  ├── unit/                     # Unit tests (61 tests)
   │   ├── test_utils.bats       # Utility functions (16 tests)
   │   ├── test_version_compare.bats  # Version comparison (17 tests)
+  │   ├── test_validation.bats  # URL/path validation (18 tests)
+  │   ├── test_gpg_verification.bats # GPG signature verification (6 tests)
   │   └── test_api_key.bats     # API key loading (4 tests)
-  ├── integration/              # Integration tests (56 tests)
+  ├── integration/              # Integration tests (127 tests)
   │   ├── test_cmd_configure.bats  # Configure command (17 tests)
-  │   ├── test_cmd_help.bats    # Help command (6 tests)
   │   ├── test_cmd_query.bats   # Query command (22 tests)
+  │   ├── test_cmd_users.bats   # Users command (16 tests)
+  │   ├── test_cmd_docs.bats    # Documentation command (12 tests)
+  │   ├── test_cmd_knowledgebases.bats # KB command (10 tests)
+  │   ├── test_cmd_update.bats  # Update command (10 tests)
+  │   ├── test_api_request.bats # API request handling (10 tests)
+  │   ├── test_cmd_history.bats # History command (7 tests)
+  │   ├── test_cmd_help.bats    # Help command (6 tests)
   │   ├── test_cmd_status.bats  # Status command (6 tests)
+  │   ├── test_cmd_get_query.bats # Get query command (6 tests)
   │   └── test_cmd_version.bats # Version command (5 tests)
   ├── helpers/                  # Test utilities
   │   ├── test_helpers.bash     # Common functions
@@ -750,10 +771,8 @@ See [tests/README.md](tests/README.md) for complete testing documentation.
 
 - ✓ ShellCheck: 0 warnings
 - ✓ BCS (Bash Coding Standard): 100% compliant
-- ✓ Test Coverage: 95%+ (93 tests, 100% passing)
-- ✓ Security Audit: Passed
-
-See [AUDIT-BASH.md](AUDIT-BASH.md) for detailed audit report.
+- ✓ Test Coverage: 95%+ (188 tests)
+- ✓ Security Audit: Passed (URL validation, GPG verification, path traversal prevention)
 
 ### Requirements
 
