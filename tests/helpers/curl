@@ -1,15 +1,47 @@
 #!/usr/bin/env bash
 # Mock curl for testing - returns mocked responses from environment variables
+#
+# Environment variables:
+#   MOCK_CURL_RESPONSE      - JSON response body
+#   MOCK_CURL_HTTP_CODE     - HTTP status code (default: 200)
+#   MOCK_CURL_FAIL          - Set to 1 for connection failure (exit 7)
+#   MOCK_CURL_EXIT_CODE     - Custom exit code (default: 0)
+#   MOCK_CURL_CALL_COUNT    - Path to file for tracking call count
+#   MOCK_CURL_RESPONSES     - Path to file with line-delimited responses (for retry testing)
 
-# Check if we should fail
+# Increment call counter if tracking file is set
+if [[ -n "${MOCK_CURL_CALL_COUNT:-}" ]]; then
+  count=$(cat "$MOCK_CURL_CALL_COUNT" 2>/dev/null || echo 0)
+  ((count++)) || true  # Avoid set -e issue with increment from 0
+  echo "$count" > "$MOCK_CURL_CALL_COUNT"
+
+  # If we have a responses file, use line N for call N
+  if [[ -n "${MOCK_CURL_RESPONSES:-}" ]] && [[ -f "${MOCK_CURL_RESPONSES:-}" ]]; then
+    response=$(sed -n "${count}p" "$MOCK_CURL_RESPONSES")
+    # Format: HTTP_CODE:RESPONSE or just RESPONSE (assumes 200)
+    if [[ "$response" == *:* ]]; then
+      http_code=${response%%:*}
+      response=${response#*:}
+    else
+      http_code=200
+    fi
+  fi
+fi
+
+# Check if we should fail (connection error)
 if [[ "${MOCK_CURL_FAIL:-0}" == "1" ]]; then
   echo "curl: (7) Failed to connect to test.yatti.local port 443: Connection refused" >&2
   exit 7
 fi
 
-# Read mock data from environment
-response="${MOCK_CURL_RESPONSE}"
-http_code="${MOCK_CURL_HTTP_CODE:-200}"
+# Check for custom exit code (e.g., timeout=28)
+if [[ -n "${MOCK_CURL_EXIT_CODE:-}" ]] && [[ "$MOCK_CURL_EXIT_CODE" != "0" ]]; then
+  exit "$MOCK_CURL_EXIT_CODE"
+fi
+
+# Read mock data from environment if not set by call counter logic
+response="${response:-${MOCK_CURL_RESPONSE}}"
+http_code="${http_code:-${MOCK_CURL_HTTP_CODE:-200}}"
 
 # If no response set, use empty JSON object
 if [[ -z "$response" ]]; then

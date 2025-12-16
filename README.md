@@ -6,7 +6,7 @@ YaTTi gives you command-line access to curated knowledge domains using sophistic
 
 ## Table of Contents
 
-- [What's New in v1.4.0](#whats-new-in-v140) ◉ **Unlimited query sizes & security enhancements**
+- [What's New](#whats-new) ◉ **Retry logic, man page, query sizes & security**
 - [Available Knowledgebases](#available-knowledgebases)
 - [Quick Start](#quick-start)
 - [Example Queries](#example-queries)
@@ -23,7 +23,45 @@ YaTTi gives you command-line access to curated knowledge domains using sophistic
 
 ---
 
-## What's New in v1.4.0
+## What's New
+
+### ◉ Automatic Retry with Exponential Backoff (Latest)
+
+The client now automatically retries transient failures:
+
+| Error Type | Behavior |
+|------------|----------|
+| HTTP 429 (Rate Limit) | Retried with backoff |
+| HTTP 5xx (Server Error) | Retried with backoff |
+| Connection failures | Retried with backoff |
+| HTTP 4xx (Client Error) | Not retried (except 429) |
+
+**Configuration:**
+```bash
+export YATTI_MAX_RETRIES=3         # Max attempts (default: 3, set to 1 to disable)
+export YATTI_TIMEOUT=60            # Request timeout seconds (default: 60)
+export YATTI_CONNECT_TIMEOUT=10    # Connection timeout seconds (default: 10)
+```
+
+**Backoff sequence:** 1s → 2s → 4s
+
+### ◉ Man Page Documentation (Latest)
+
+Full documentation is now available via man page:
+
+```bash
+man yatti-api                      # View documentation
+```
+
+Install the man page:
+```bash
+sudo install -m 644 yatti-api.1 /usr/local/share/man/man1/
+sudo mandb
+```
+
+---
+
+## v1.4.0
 
 ### ◉ Unlimited Query Size Support
 
@@ -537,6 +575,7 @@ yatti-api history                 # View query history
 yatti-api configure               # Configure API key
 yatti-api update --check          # Check for updates
 yatti-api docs                    # View documentation
+man yatti-api                     # View man page (if installed)
 ```
 
 ### Query Command
@@ -647,6 +686,11 @@ export YATTI_API_KEY="your_key"
 # API base URL (default: https://yatti.id/v1)
 export YATTI_API_BASE="https://custom.yatti.id/v1"
 
+# Retry configuration
+export YATTI_MAX_RETRIES=3         # Max retry attempts (default: 3, set to 1 to disable)
+export YATTI_TIMEOUT=60            # Request timeout in seconds (default: 60)
+export YATTI_CONNECT_TIMEOUT=10    # Connection timeout in seconds (default: 10)
+
 # Verbose output
 export VERBOSE=1
 
@@ -702,6 +746,14 @@ yatti-api configure
 yatti-api query jakartapost "your query" --timeout 300
 ```
 
+**Rate limiting or server errors (429, 5xx):**
+
+The client automatically retries transient failures with exponential backoff. To disable retries:
+
+```bash
+export YATTI_MAX_RETRIES=1
+```
+
 **Query too long (command-line limit exceeded):**
 
 ```bash
@@ -720,16 +772,21 @@ cat long_query.txt | yatti-api query seculardharma -q -
 
 ```
 yatti-api                       # Main bash script (~1000 lines)
+yatti-api.1                     # Man page documentation
 yatti-api.bash_completion       # Bash completion
+CHANGELOG.md                    # Version history
 install.sh                      # One-line installer
-tests/                          # Test suite (188 tests)
-  ├── unit/                     # Unit tests (61 tests)
+tests/                          # Test suite (240 tests)
+  ├── unit/                     # Unit tests (98 tests)
   │   ├── test_utils.bats       # Utility functions (16 tests)
   │   ├── test_version_compare.bats  # Version comparison (17 tests)
   │   ├── test_validation.bats  # URL/path validation (18 tests)
   │   ├── test_gpg_verification.bats # GPG signature verification (6 tests)
-  │   └── test_api_key.bats     # API key loading (4 tests)
-  ├── integration/              # Integration tests (127 tests)
+  │   ├── test_api_key.bats     # API key loading (4 tests)
+  │   ├── test_large_payloads.bats   # Large query handling (8 tests)
+  │   ├── test_unicode_handling.bats # Unicode/i18n support (15 tests)
+  │   └── test_error_resilience.bats # Error handling (14 tests)
+  ├── integration/              # Integration tests (142 tests)
   │   ├── test_cmd_configure.bats  # Configure command (17 tests)
   │   ├── test_cmd_query.bats   # Query command (22 tests)
   │   ├── test_cmd_users.bats   # Users command (16 tests)
@@ -741,7 +798,8 @@ tests/                          # Test suite (188 tests)
   │   ├── test_cmd_help.bats    # Help command (6 tests)
   │   ├── test_cmd_status.bats  # Status command (6 tests)
   │   ├── test_cmd_get_query.bats # Get query command (6 tests)
-  │   └── test_cmd_version.bats # Version command (5 tests)
+  │   ├── test_cmd_version.bats # Version command (5 tests)
+  │   └── test_retry_logic.bats # Retry mechanism (15 tests)
   ├── helpers/                  # Test utilities
   │   ├── test_helpers.bash     # Common functions
   │   ├── mocks.bash            # Mock functions
@@ -771,7 +829,7 @@ See [tests/README.md](tests/README.md) for complete testing documentation.
 
 - ✓ ShellCheck: 0 warnings
 - ✓ BCS (Bash Coding Standard): 100% compliant
-- ✓ Test Coverage: 95%+ (188 tests)
+- ✓ Test Coverage: 95%+ (240 tests)
 - ✓ Security Audit: Passed (URL validation, GPG verification, path traversal prevention)
 
 ### Requirements

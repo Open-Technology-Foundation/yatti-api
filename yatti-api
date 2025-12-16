@@ -22,6 +22,11 @@ fi
 declare -r CONFIG_DIR="$HOME"/.config/"$SCRIPT_NAME"
 declare -r API_KEY_FILE="$CONFIG_DIR"/api_key
 
+# Retry configuration (override with environment variables)
+declare -ri MAX_RETRIES=${YATTI_MAX_RETRIES:-3}
+declare -ri CURL_CONNECT_TIMEOUT=${YATTI_CONNECT_TIMEOUT:-10}
+declare -ri CURL_MAX_TIME=${YATTI_TIMEOUT:-60}
+
 # Global variables
 declare -i VERBOSE=${VERBOSE:-0} PROMPT=1
 # Colour definitions
@@ -135,48 +140,81 @@ save_api_key() {
   success "API key saved to ${API_KEY_FILE@Q}"
 }
 
-# Make API request
+# Check if HTTP error is retryable (transient server errors)
+is_retryable_error() {
+  local -i http_code=$1
+  # Retry on: rate limit (429), server errors (5xx)
+  [[ $http_code -eq 429 ]] || ((http_code >= 500))
+}
+
+# Make API request with retry logic
 api_request() {
-  local -- method=$1
-  local -- endpoint=$2
+  local -- method=$1 endpoint=$2
   shift 2
   local -a curl_args=("$@")
-  local -- api_key
+  local -- api_key response http_code
+  local -i attempt=0 backoff=1 curl_exit=0
+
   api_key=$(load_api_key)
-  
+
   local -a headers=()
   headers+=(-H 'Content-Type: application/json')
   headers+=(-H 'Accept: application/json')
-  
   [[ -z "$api_key" ]] || headers+=(-H "X-API-Key: $api_key")
 
   ((VERBOSE==0)) || info "Request: $method ${API_BASE}${endpoint}"
-  
-  local -- response
-  local -- http_code
-  
-  # Make request and capture both response and HTTP code
-  response=$(curl -sf -w "\n__HTTP_CODE__%{http_code}" \
-    -X "$method" \
-    "${headers[@]}" \
-    "${curl_args[@]}" \
-    "${API_BASE}$endpoint")
-  
-  http_code=$(echo "$response" | tail -1 | sed 's/__HTTP_CODE__//')
-  response=$(echo "$response" | sed '$d')
-  
-  if [[ "$http_code" -ge 200 ]] && [[ "$http_code" -lt 300 ]]; then
-    echo "$response"
-  else
-    if ((VERBOSE)) || [[ "$http_code" -ge 400 ]]; then
-      error "HTTP $http_code"
-      if [[ -n "$response" ]]; then
-        # Output error message to stderr, not stdout
-        echo "$response" | jq -r '.error.message // .message // .' 2>/dev/null >&2 || echo "$response" >&2
+
+  # Retry loop with exponential backoff
+  while ((attempt < MAX_RETRIES)); do
+    ((++attempt))  # Use pre-increment to avoid set -e failure when attempt=0
+
+    # Make request and capture both response and HTTP code
+    # Note: Don't use -f flag - we need to capture response body for error messages
+    response=$(curl -s \
+        --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+        --max-time "$CURL_MAX_TIME" \
+        -w "\n__HTTP_CODE__%{http_code}" \
+        -X "$method" \
+        "${headers[@]}" \
+        "${curl_args[@]}" \
+        "${API_BASE}$endpoint" 2>/dev/null) || curl_exit=$?
+
+    # Check for curl-level failures (connection errors, timeouts)
+    if ((curl_exit != 0)) && [[ -z "$response" || "$response" == *"__HTTP_CODE__000"* ]]; then
+      if ((attempt < MAX_RETRIES)); then
+        ((VERBOSE)) && warn "Connection failed (curl exit $curl_exit), retry $attempt/$MAX_RETRIES in ${backoff}s..."
+        sleep "$backoff"
+        backoff=$((backoff * 2))
+        curl_exit=0
+        continue
+      else
+        error "Connection failed after $MAX_RETRIES attempts"
+        return 1
       fi
     fi
-    return 1
-  fi
+
+    http_code=$(tail -1 <<< "$response" | sed 's/__HTTP_CODE__//')
+    response=$(sed '$d' <<< "$response")
+
+    if [[ "$http_code" -ge 200 ]] && [[ "$http_code" -lt 300 ]]; then
+      echo "$response"
+      return 0
+    elif is_retryable_error "$http_code" && ((attempt < MAX_RETRIES)); then
+      ((VERBOSE)) && warn "HTTP $http_code, retry $attempt/$MAX_RETRIES in ${backoff}s..."
+      sleep "$backoff"
+      backoff=$((backoff * 2))
+      continue
+    else
+      # Non-retryable error or max retries exceeded
+      if ((VERBOSE)) || [[ "$http_code" -ge 400 ]]; then
+        error "HTTP $http_code"
+        [[ -n "$response" ]] && jq -r '.error.message // .message // .' <<< "$response" 2>/dev/null >&2 || echo "$response" >&2
+      fi
+      return 1
+    fi
+  done
+
+  return 1
 }
 
 # Format JSON output
@@ -339,7 +377,7 @@ cmd_query() {
       cat <<EOT
 Usage: $SCRIPT_NAME query [options]
 
-Options:"
+Options:
   -K, --knowledgebase NAME   Knowledgebase to query (required)
   -q, --query TEXT           Query text (required, use "-" for stdin)
   -Q, --query-file FILE      Read query from file
@@ -435,9 +473,14 @@ EOT
       context_only: ($context_only == 1)
     }')
 
-  # Add optional fields
-  [[ -n "$max_tokens" ]] && options_base=$(echo "$options_base" | jq --argjson mt "$max_tokens" '. + {max_tokens: $mt}')
-  [[ -n "$prompt_template" ]] && options_base=$(echo "$options_base" | jq --arg pt "$prompt_template" '. + {prompt_template: $pt}')
+  # Add optional fields in one jq call (avoids sequential jq invocations)
+  if [[ -n "$max_tokens" ]] || [[ -n "$prompt_template" ]]; then
+    options_base=$(jq \
+      --argjson mt "${max_tokens:-null}" \
+      --arg pt "${prompt_template:-}" \
+      'if $mt then . + {max_tokens: $mt} else . end |
+       if $pt != "" then . + {prompt_template: $pt} else . end' <<< "$options_base")
+  fi
 
   # Build final payload
   json_payload=$(jq -n \
@@ -455,12 +498,15 @@ EOT
     if [[ "${OUTPUT_FORMAT:-pretty}" == json ]]; then
       echo "$response" | format_json
     else
-      # Pretty print the response
-      local query_id answer
+      # Pretty print the response - optimized to reduce jq calls
+      local -- query_id answer
       local -i cached
-      query_id=$(echo "$response" | jq -r '.data.query_id // ""')
-      answer=$(echo "$response" | jq -r '.data.response // ""')
-      cached=$(echo "$response" | jq -r 'if (.data.metadata.cached // false) then 1 else 0 end')
+      # Extract simple fields efficiently (single jq call)
+      read -r query_id cached < <(
+        jq -r '[.data.query_id // "", (if .data.metadata.cached then "1" else "0" end)] | @tsv' <<< "$response"
+      )
+      # Answer needs separate extraction due to potential multiline content
+      answer=$(jq -r '.data.response // ""' <<< "$response")
       
       [[ -z "$query_id" ]] || info "Query ID: $query_id"
 
@@ -470,7 +516,7 @@ EOT
       if ((context_only)); then
         info 'Contexts:'
         # Display contexts with source and content
-        echo "$response" | jq -r '.data.contexts[]? | "\n[\(.source | split("/") | .[-1])]\n\(.content)\n"' 2>/dev/null
+        jq -r '.data.contexts[]? | "\n[\(.source | split("/") | .[-1])]\n\(.content)\n"' <<< "$response" 2>/dev/null || true
       else
         info 'Answer:'
         echo "$answer"
@@ -478,7 +524,7 @@ EOT
         # Show contexts if verbose
         if ((VERBOSE)); then
           info 'Contexts:'
-          echo "$response" | jq -r '.data.contexts[]' 2>/dev/null
+          jq -r '.data.contexts[]?' <<< "$response" 2>/dev/null || true
         fi
       fi
     fi
@@ -623,6 +669,9 @@ Query Examples:
 Environment Variables:
   YATTI_API_KEY               API key (alternative to config file)
   YATTI_API_BASE              API base URL (default: $API_BASE)
+  YATTI_MAX_RETRIES           Max retry attempts (default: 3, 0 to disable)
+  YATTI_TIMEOUT               Request timeout in seconds (default: 60)
+  YATTI_CONNECT_TIMEOUT       Connection timeout in seconds (default: 10)
   VERBOSE                     Set to 1 for verbose output
   OUTPUT_FORMAT               json|pretty (default: pretty)
 
@@ -800,11 +849,13 @@ cmd_update() {
   version_response=$(api_request GET "/client/check-update?version=$VERSION" 2>/dev/null)
   
   [[ -n "$version_response" ]] || die 1 'Failed to check for updates'
-  
+
+  # Extract version info efficiently (single jq call instead of two)
   local -i update_available
   local -- latest_version
-  update_available=$(echo "$version_response" | jq -r 'if (.data.update_available // false) then 1 else 0 end')
-  latest_version=$(echo "$version_response" | jq -r '.data.latest_version // ""')
+  read -r update_available latest_version < <(
+    jq -r '[(if .data.update_available then "1" else "0" end), .data.latest_version // ""] | @tsv' <<< "$version_response"
+  )
   
   if ((update_available == 0 && force == 0)); then
     success "You are running the latest version ($VERSION)"
@@ -835,8 +886,8 @@ cmd_update() {
 
     # If we need sudo and don't have it, re-run with sudo
     if ((will_need_sudo)); then
-      info "System-wide installation requires sudo privileges"
-      info "Re-running with sudo..."
+      info 'System-wide installation requires sudo privileges' \
+            'Re-running with sudo...'
       # Rebuild the arguments to preserve flags
       local -a update_args=()
       ((force==0)) || update_args+=(--force)
@@ -850,15 +901,15 @@ cmd_update() {
     script_dir=$(dirname "$SCRIPT_PATH")
     
     # Check if script is in a system directory
-    if [[ "$script_dir" == "/usr/local/bin" ]] || [[ "$script_dir" == "/usr/bin" ]] || [[ "$script_dir" == "/opt"* ]]; then
+    if [[ "$script_dir" == '/usr/local/bin' ]] || [[ "$script_dir" == '/usr/bin' ]] || [[ "$script_dir" == "/opt"* ]]; then
       # Check if we have write permission
       [[ -w "$SCRIPT_PATH" ]] || needs_sudo=1
     fi
     
-    # Download new version to temp file
+    # Download new version to temp file (mktemp creates with 600 permissions)
     temp_file=$(mktemp "${TMPDIR:-/tmp}/yatti-api.XXXXXX")
-    
-    info "Downloading new version..."
+
+    info 'Downloading new version...'
     if ! curl -sfL "${API_BASE}/client/download" -o "$temp_file"; then
       rm -f "$temp_file"
       die 1 'Failed to download update'
@@ -896,7 +947,7 @@ cmd_update() {
     # Handle update based on permissions
     if ((needs_sudo)); then
       # For system-wide installation, use sudo internally
-      info "System-wide installation detected. Using sudo for update..."
+      info 'System-wide installation detected. Using sudo for update...'
 
       # Make backup with sudo
       local -- backup_file="${SCRIPT_PATH}.backup"
@@ -910,7 +961,7 @@ cmd_update() {
 
         # If running interactively and not in a pipe, restart with new version
         if [[ -t 1 ]] && [[ -t 0 ]]; then
-          info "Restarting with new version..."
+          info 'Restarting with new version...'
           exec "$SCRIPT_PATH" version
         fi
       else
@@ -920,10 +971,10 @@ cmd_update() {
         # If not already running with sudo, suggest it
         if [[ "$EUID" -ne 0 ]]; then
           echo
-          echo "Alternatively, you can:"
+          echo 'Alternatively, you can:'
           echo "1. Run with sudo: sudo $SCRIPT_NAME update"
-          echo "2. Install in user directory:"
-          echo "   mkdir -p ~/bin"
+          echo '2. Install in user directory:'
+          echo '   mkdir -p ~/bin'
           echo "   cp $temp_file ~/bin/$SCRIPT_NAME && chmod 755 ~/bin/$SCRIPT_NAME"
           echo "   export PATH=\"\$HOME/bin:\$PATH\""
         fi
@@ -945,11 +996,11 @@ cmd_update() {
 
       # If running interactively and not in a pipe, restart with new version
       if [[ -t 1 ]] && [[ -t 0 ]]; then
-        info "Restarting with new version..."
+        info 'Restarting with new version...'
         exec "$SCRIPT_PATH" version
       fi
     else
-      error "Failed to update script at $SCRIPT_PATH"
+      error "Failed to update script at ${SCRIPT_PATH@Q}"
       error "Downloaded file available at: $temp_file"
       return 1
     fi

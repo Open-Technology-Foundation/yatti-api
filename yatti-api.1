@@ -1,0 +1,315 @@
+.TH YATTI-API 1 "2025-12-16" "yatti-api 1.4.0" "YaTTi API Client Manual"
+.SH NAME
+yatti-api \- RAG query client for specialized knowledgebases
+.SH SYNOPSIS
+.B yatti-api
+.RI [ command ]
+.RI [ options ]
+.br
+.B yatti-api query
+.BI \-K " knowledgebase"
+.BI \-q " query"
+.RI [ options ]
+.SH DESCRIPTION
+.B yatti-api
+provides command-line access to the YaTTi REST API for RAG (Retrieval Augmented Generation) queries across specialized knowledgebases. It enables users to query large document collections using natural language and receive AI-generated responses with source citations.
+.SH COMMANDS
+.TP
+.B configure
+Interactive API key setup and validation. Prompts for your API key and validates it against the server before saving.
+.TP
+.BR status " [" health | info "]"
+Check API status and health. Without arguments, returns general status. Subcommands:
+.RS
+.TP
+.B health
+Detailed health check of API services.
+.TP
+.B info
+Server information and version details.
+.RE
+.TP
+.BR users " [" list | get | create | update | delete "] [" options "]"
+User management operations. Subcommands:
+.RS
+.TP
+.B list
+List all users (default when no subcommand given).
+.TP
+.BI get " user-id"
+Get details for a specific user.
+.TP
+.BI create " \-\-email email \-\-name name"
+Create a new user.
+.TP
+.BI update " user-id \-\-json data"
+Update user with JSON data.
+.TP
+.BI delete " user-id"
+Delete a user.
+.RE
+.TP
+.BR kb ", " knowledgebases " [" list | get | sync "]"
+Knowledgebase operations. Subcommands:
+.RS
+.TP
+.B list
+List all available knowledgebases (default).
+.TP
+.BI get " kb-name"
+Get details for a specific knowledgebase.
+.TP
+.B sync
+Trigger knowledgebase synchronization.
+.RE
+.TP
+.BR query " [" options "]"
+Execute a RAG query against a knowledgebase. This is the primary command for retrieving information. See
+.B QUERY OPTIONS
+below.
+.TP
+.BR history " [" limit "] [" knowledgebase "]"
+View query history. Optionally limit results and filter by knowledgebase.
+.TP
+.BI get-query " query-id"
+Retrieve a specific query result by its ID.
+.TP
+.BR docs " [" user | api | technical "] [" raw | html "]"
+Access API documentation. Categories:
+.RS
+.TP
+.B user
+User documentation (default).
+.TP
+.BR api ", " developer
+API reference documentation.
+.TP
+.BR technical ", " dev
+Technical implementation details.
+.PP
+Formats:
+.B raw
+returns plain text,
+.B html
+returns HTML.
+.RE
+.TP
+.BR update " [" \-\-check | \-\-force "]"
+Check for updates or update the client. Options:
+.RS
+.TP
+.B \-\-check
+Check for updates without installing.
+.TP
+.B \-\-force
+Force update even if current version.
+.RE
+.TP
+.B help
+Display help information.
+.TP
+.B version
+Display version information with masked API key.
+.SH QUERY OPTIONS
+The following options are available for the
+.B query
+command:
+.TP
+.BI \-K ", " \-\-knowledgebase " NAME"
+Knowledgebase to query (required).
+.TP
+.BI \-q ", " \-\-query " TEXT"
+Query text (required). Use "\-" to read from stdin.
+.TP
+.BI \-Q ", " \-\-query-file " FILE"
+Read query text from a file. Supports large queries without shell argument limits.
+.TP
+.BI \-k ", " \-\-top-k " NUM"
+Number of document contexts to retrieve (default: 5).
+.TP
+.BI \-t ", " \-\-temperature " NUM"
+LLM temperature 0.0\-2.0 (default: 0.0). Higher values produce more creative responses.
+.TP
+.BI \-m ", " \-\-model " NAME"
+LLM model to use (default: gpt-5.2). Supports models from OpenAI, Anthropic, and Google.
+.TP
+.BI \-s ", " \-\-context-scope " NUM"
+Context segments per result (default: 3, typically 1\-10).
+.TP
+.BR \-c ", " \-\-context ", " \-\-context-only
+Return only retrieved contexts without AI response.
+.TP
+.BI \-M ", " \-\-max-tokens " NUM"
+Maximum response tokens.
+.TP
+.BI \-p ", " \-\-prompt-template " NAME"
+Prompt style. Available templates:
+.BR default ,
+.BR instructive ,
+.BR scholarly ,
+.BR concise ,
+.BR analytical ,
+.BR conversational ,
+.BR technical .
+.TP
+.BR \-f ", " \-\-force-refresh
+Skip cache and force new query.
+.TP
+.BI \-\-cache-ttl " SECONDS"
+Cache TTL in seconds (default: 86400).
+.TP
+.BI \-\-timeout " SECONDS"
+Query timeout in seconds (default: 60, max: 600). Use higher values for large knowledgebases like jakartapost.
+.SH ENVIRONMENT
+.TP
+.B YATTI_API_KEY
+API key. Alternative to storing in config file.
+.TP
+.B YATTI_API_BASE
+API base URL. Must be https://yatti.id (validated for security).
+.TP
+.B YATTI_MAX_RETRIES
+Maximum retry attempts for transient failures (default: 3). Set to 1 to disable retries.
+.TP
+.B YATTI_TIMEOUT
+Request timeout in seconds (default: 60).
+.TP
+.B YATTI_CONNECT_TIMEOUT
+Connection timeout in seconds (default: 10).
+.TP
+.B VERBOSE
+Set to 1 for verbose output including request details and contexts.
+.TP
+.B OUTPUT_FORMAT
+Output format:
+.B json
+or
+.B pretty
+(default: pretty).
+.SH FILES
+.TP
+.I ~/.config/yatti-api/api_key
+API key configuration file. Created with 600 permissions for security.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+General error or API failure.
+.TP
+.B 2
+Missing required arguments.
+.TP
+.B 22
+Validation error (invalid options or parameters).
+.SH EXAMPLES
+Configure API access:
+.PP
+.RS
+.nf
+$ yatti-api configure
+.fi
+.RE
+.PP
+Query a knowledgebase:
+.PP
+.RS
+.nf
+$ yatti-api query -K seculardharma -q "What is mindfulness?"
+.fi
+.RE
+.PP
+Query with custom parameters:
+.PP
+.RS
+.nf
+$ yatti-api query -K okusiresearch -q "PMA company requirements" \\
+    --top-k 10 --temperature 0.5 --model claude-3.5-sonnet
+.fi
+.RE
+.PP
+Get only source contexts:
+.PP
+.RS
+.nf
+$ yatti-api query -K jakartapost -q "1998 crisis" --context-only --timeout 300
+.fi
+.RE
+.PP
+Query from file (for large queries):
+.PP
+.RS
+.nf
+$ yatti-api query -K prosocial -Q question.txt
+.fi
+.RE
+.PP
+Query from stdin:
+.PP
+.RS
+.nf
+$ echo "What are the eight precepts?" | yatti-api query -K seculardharma -q -
+.fi
+.RE
+.PP
+List available knowledgebases:
+.PP
+.RS
+.nf
+$ yatti-api kb list
+.fi
+.RE
+.PP
+View recent query history:
+.PP
+.RS
+.nf
+$ yatti-api history 10
+.fi
+.RE
+.PP
+Check for updates:
+.PP
+.RS
+.nf
+$ yatti-api update --check
+.fi
+.RE
+.SH RETRY BEHAVIOR
+The client automatically retries transient failures with exponential backoff:
+.IP \(bu 3
+HTTP 429 (Rate Limit): Retried with backoff
+.IP \(bu 3
+HTTP 5xx (Server Errors): Retried with backoff
+.IP \(bu 3
+Connection failures: Retried with backoff
+.IP \(bu 3
+HTTP 4xx (Client Errors): Not retried (except 429)
+.PP
+Default: 3 retry attempts with 1s, 2s, 4s backoff delays.
+Disable with
+.BR YATTI_MAX_RETRIES=1 .
+.SH SECURITY
+.IP \(bu 3
+API keys are stored with 600 permissions
+.IP \(bu 3
+API keys are masked in version output (last 4 characters shown)
+.IP \(bu 3
+URL validation prevents API endpoint hijacking
+.IP \(bu 3
+GPG signature verification for client updates
+.IP \(bu 3
+Path traversal prevention in all user inputs
+.IP \(bu 3
+Symlink warnings for query files
+.SH SEE ALSO
+.BR curl (1),
+.BR jq (1),
+.BR bash (1)
+.SH BUGS
+Report bugs at: https://github.com/Open-Technology-Foundation/yatti-api/issues
+.SH AUTHORS
+Biksu Okusi <biksu@okusi.id>
+.SH COPYRIGHT
+GPL-3.0 License. Copyright (C) 2025 Biksu Okusi / Okusi Associates.

@@ -47,6 +47,34 @@ set_mock_curl_fail() {
   export MOCK_CURL_FAIL=1
 }
 
+# Setup mock curl for retry testing with sequence of responses
+# Usage: setup_mock_curl_retries "500:{\"error\":\"server error\"}" "200:{\"status\":\"ok\"}"
+setup_mock_curl_retries() {
+  # Create temp files for tracking
+  export MOCK_CURL_CALL_COUNT="${BATS_TEST_TMPDIR}/curl_call_count"
+  export MOCK_CURL_RESPONSES="${BATS_TEST_TMPDIR}/curl_responses"
+
+  # Initialize call count
+  echo "0" > "$MOCK_CURL_CALL_COUNT"
+
+  # Write responses (one per line)
+  printf '%s\n' "$@" > "$MOCK_CURL_RESPONSES"
+
+  # Clear single-response vars
+  unset MOCK_CURL_RESPONSE MOCK_CURL_HTTP_CODE MOCK_CURL_FAIL
+}
+
+# Get the number of times mock curl was called
+get_mock_curl_call_count() {
+  cat "${MOCK_CURL_CALL_COUNT:-/dev/null}" 2>/dev/null || echo 0
+}
+
+# Reset retry tracking
+reset_mock_curl_retries() {
+  rm -f "${MOCK_CURL_CALL_COUNT:-}" "${MOCK_CURL_RESPONSES:-}"
+  unset MOCK_CURL_CALL_COUNT MOCK_CURL_RESPONSES
+}
+
 # Setup test environment
 setup_test_env() {
   # Create isolated test environment

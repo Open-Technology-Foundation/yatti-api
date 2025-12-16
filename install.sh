@@ -20,7 +20,7 @@ fi
 
 # Install main script
 echo 'Downloading yatti-api...'
-"$SUDO" curl -fsSL -o /usr/local/bin/yatti-api https://yatti.id/v1/client/download
+$SUDO curl -fsSL -o /usr/local/bin/yatti-api https://yatti.id/v1/client/download
 
 # Verify checksum (soft failure - warns if verification unavailable or fails)
 echo 'Verifying download...'
