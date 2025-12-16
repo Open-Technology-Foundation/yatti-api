@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Retry mechanism validation
 - Man page documentation (`yatti-api.1`)
 - Enhanced mock curl for retry testing in test suite
+- Installer (`install.sh`) now installs man page and bash completion automatically
 
 ### Changed
 - Optimized jq calls for improved performance (reduced redundant JSON parsing)
