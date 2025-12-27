@@ -1,4 +1,4 @@
-.TH YATTI-API 1 "2025-12-16" "yatti-api 1.4.0" "YaTTi API Client Manual"
+.TH YATTI-API 1 "2025-12-27" "yatti-api 1.4.1" "YaTTi API Client Manual"
 .SH NAME
 yatti-api \- RAG query client for specialized knowledgebases
 .SH SYNOPSIS
@@ -188,8 +188,10 @@ or
 (default: pretty).
 .SH FILES
 .TP
+.I $XDG_CONFIG_HOME/yatti-api/api_key
+API key configuration file. Created with 600 permissions for security. Defaults to
 .I ~/.config/yatti-api/api_key
-API key configuration file. Created with 600 permissions for security.
+if XDG_CONFIG_HOME is not set.
 .SH EXIT STATUS
 .TP
 .B 0
