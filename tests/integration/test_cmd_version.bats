@@ -18,7 +18,7 @@ teardown() {
 @test "version command displays version" {
   run ./yatti-api version
   [[ "$status" -eq 0 ]]
-  [[ "$output" == *"1.4.0"* ]]
+  [[ "$output" == *"1.4.1"* ]]
 }
 
 @test "version command format is correct" {
@@ -50,7 +50,7 @@ teardown() {
 @test "version command works in non-verbose mode" {
   VERBOSE=0 run ./yatti-api version
   [[ "$status" -eq 0 ]]
-  [[ "$output" == *"1.4.0"* ]]
+  [[ "$output" == *"1.4.1"* ]]
 }
 
 #fin

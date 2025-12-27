@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2025-12-27
+
 ### Added
 - Retry logic with exponential backoff for transient API failures (429, 5xx)
 - New environment variables: `YATTI_MAX_RETRIES`, `YATTI_TIMEOUT`, `YATTI_CONNECT_TIMEOUT`

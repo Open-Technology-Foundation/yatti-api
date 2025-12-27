@@ -4,7 +4,7 @@ set -euo pipefail
 shopt -s inherit_errexit extglob nullglob
 
 # Script metadata
-declare -r VERSION='1.4.0'
+declare -r VERSION='1.4.1'
 #shellcheck disable=SC2155
 declare -r SCRIPT_PATH=$(realpath -e -- "$0")
 declare -r SCRIPT_NAME=${SCRIPT_PATH##*/}
