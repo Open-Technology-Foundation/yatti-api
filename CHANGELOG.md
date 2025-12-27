@@ -10,11 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Retry logic with exponential backoff for transient API failures (429, 5xx)
 - New environment variables: `YATTI_MAX_RETRIES`, `YATTI_TIMEOUT`, `YATTI_CONNECT_TIMEOUT`
-- Comprehensive test coverage for edge cases (52 new tests):
+- Comprehensive test coverage for edge cases (63 new tests):
   - Large payload handling (100KB+ queries)
   - Unicode and special character support (15 languages)
   - Error resilience for malformed responses
   - Retry mechanism validation
+  - JSON input validation for user commands
+  - GPG key fingerprint pinning verification
+  - Interactive prompt timeout handling
 - Man page documentation (`yatti-api.1`)
 - Enhanced mock curl for retry testing in test suite
 - Installer (`install.sh`) now installs man page and bash completion automatically
@@ -27,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - SC2030 bug: `temp_file` was assigned in subshell and lost (update function)
 - jq exit status causing failure when contexts array is missing in verbose mode
+- Duplicate `script_dir` variable declaration in `cmd_update()`
+
+### Security
+- JSON input validation for `users create` and `users update` commands (prevents injection)
+- GPG key fingerprint pinning prevents MITM attacks during client updates
+- Read timeouts (60s for prompts, 300s for API key input) prevent indefinite hangs
 
 ## [1.4.0] - 2025-12-15
 
