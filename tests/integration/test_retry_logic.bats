@@ -164,6 +164,7 @@ teardown() {
 
 @test "max retries respected - gives up after limit" {
   # Arrange - all 500 errors, should give up after MAX_RETRIES
+  # shellcheck disable=SC2030,SC2031  # BATS subshell export is intentional
   export YATTI_MAX_RETRIES=3
   setup_mock_curl_retries \
     '500:{"error":{"message":"Error 1"}}' \
@@ -181,6 +182,7 @@ teardown() {
 
 @test "YATTI_MAX_RETRIES=1 disables retries" {
   # Arrange
+  # shellcheck disable=SC2030,SC2031  # BATS subshell export is intentional
   export YATTI_MAX_RETRIES=1
   setup_mock_curl_retries \
     '500:{"error":{"message":"Server error"}}' \
@@ -196,6 +198,7 @@ teardown() {
 
 @test "multiple retries needed before success" {
   # Arrange - need 3 attempts to succeed
+  # shellcheck disable=SC2030,SC2031  # BATS subshell export is intentional
   export YATTI_MAX_RETRIES=3
   setup_mock_curl_retries \
     '500:{"error":"error1"}' \

@@ -86,12 +86,14 @@ teardown() {
 # Tests for decp() function
 
 @test "decp() prints VERBOSE variable by default" {
+  # shellcheck disable=SC2034  # VERBOSE is used by decp() via declare -p
   VERBOSE=1
   result=$(decp)
   [[ "$result" == *"VERBOSE"* ]]
 }
 
 @test "decp() prints specified variable" {
+  # shellcheck disable=SC2034  # TEST_VAR is used by decp() via declare -p
   TEST_VAR="test_value"
   result=$(decp TEST_VAR)
   [[ "$result" == *"TEST_VAR"* ]]

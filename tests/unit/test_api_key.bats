@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for API key management functions in yatti-api
+# shellcheck disable=SC2030,SC2031  # BATS runs each @test in a subshell by design
 
 load '../helpers/test_helpers'
 load '../helpers/mocks'

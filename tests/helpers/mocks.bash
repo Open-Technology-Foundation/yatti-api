@@ -101,10 +101,15 @@ set_mock_curl_fail() {
 
 # Reset curl mock
 reset_mock_curl() {
+  # These variables are exported and used by the mock curl helper script
+  #shellcheck disable=SC2034
   MOCK_CURL_RESPONSE=""
+  #shellcheck disable=SC2034
   MOCK_CURL_HTTP_CODE="200"
+  #shellcheck disable=SC2034
   MOCK_CURL_FAIL=0
   unset MOCK_CURL_RESPONSES
+  #shellcheck disable=SC2034
   declare -gA MOCK_CURL_RESPONSES
   unset -f curl 2>/dev/null || true
 }
