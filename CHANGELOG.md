@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optimized jq calls for improved performance (reduced redundant JSON parsing)
 - Added curl connection timeouts (10s connect, 60s max)
 - Use pre-increment in retry loop to avoid `set -e` arithmetic edge case
+- Config directory now respects `$XDG_CONFIG_HOME` (FreeDesktop.org compliance)
 
 ### Fixed
 - SC2030 bug: `temp_file` was assigned in subshell and lost (update function)
