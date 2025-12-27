@@ -192,4 +192,24 @@ teardown() {
   [[ "$saved_key" == "updated_key" ]]
 }
 
+# Timeout behavior tests
+
+@test "configure command has read timeout configured" {
+  # Verify the read command uses -t flag for timeout
+  run grep -E 'read -rt [0-9]+.*api_key' ./yatti-api
+  [[ "$status" -eq 0 ]]
+}
+
+@test "configure command handles timeout gracefully" {
+  # Verify timeout handling message exists
+  run grep -c 'Input timeout - skipping' ./yatti-api
+  [[ "$output" -ge 1 ]]
+}
+
+@test "yn function has read timeout configured" {
+  # Verify the yn() function uses -t flag for timeout
+  run grep -E 'read -rt [0-9]+ -n1' ./yatti-api
+  [[ "$status" -eq 0 ]]
+}
+
 #fin

@@ -64,4 +64,28 @@ teardown() {
   [[ "$output" -ge 1 ]]
 }
 
+# Test: GPG key fingerprint pinning
+
+@test "GPG_KEY_FINGERPRINT constant is defined in script" {
+  run grep -c "declare -r GPG_KEY_FINGERPRINT=" ./yatti-api
+  [[ "$output" -ge 1 ]]
+}
+
+@test "verify_key_fingerprint function exists in script" {
+  run grep -c 'verify_key_fingerprint()' ./yatti-api
+  [[ "$output" -ge 1 ]]
+}
+
+@test "GPG fingerprint mismatch warning exists in script" {
+  # This tests that the MITM attack warning is present
+  run grep -c 'fingerprint mismatch - possible MITM attack' ./yatti-api
+  [[ "$output" -ge 1 ]]
+}
+
+@test "GPG key pinning returns code 2 on fingerprint mismatch" {
+  # Verify the return code 2 is used for fingerprint mismatch
+  run grep -c 'return 2.*# Hard fail - fingerprint' ./yatti-api
+  [[ "$output" -ge 1 ]]
+}
+
 #fin

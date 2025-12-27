@@ -8,7 +8,8 @@ setup() {
   setup_test_env
   create_test_api_key "test_api_key_123456"
 
-  # Load fixtures
+  # Load fixtures (reserved for future use with complex test data)
+  # shellcheck disable=SC2034
   FIXTURES_FILE="${BATS_TEST_DIRNAME}/../fixtures/api_responses.json"
 }
 
@@ -36,8 +37,8 @@ teardown() {
   # Arrange
   set_mock_curl_response '{"id":"new_user_123","email":"test@example.com"}' "201"
 
-  # Act - users create exercises api_request POST
-  run ./yatti-api users create --email "test@example.com" --name "Test"
+  # Act - users create exercises api_request POST (requires valid JSON)
+  run ./yatti-api users create '{"email":"test@example.com","name":"Test"}'
 
   # Assert - 201 is treated as success (2xx range)
   [[ "$status" -eq 0 ]]

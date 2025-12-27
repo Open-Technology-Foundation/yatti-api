@@ -68,6 +68,18 @@ teardown() {
   [[ "$status" -eq 0 ]]
 }
 
+@test "users create rejects invalid JSON" {
+  run ./yatti-api users create 'not valid json'
+  [[ "$status" -eq 22 ]]
+  [[ "$output" == *"Invalid JSON format"* ]]
+}
+
+@test "users create rejects truncated JSON" {
+  run ./yatti-api users create '{"email":"test@example.com"'
+  [[ "$status" -eq 22 ]]
+  [[ "$output" == *"Invalid JSON format"* ]]
+}
+
 @test "users create handles validation errors" {
   set_mock_curl_response "$(jq -c '.users.create.invalid' "$FIXTURES_FILE")" "400"
   run ./yatti-api users create '{"invalid":"data"}'
@@ -86,6 +98,18 @@ teardown() {
   run ./yatti-api users update user_001
   [[ "$status" -eq 2 ]]
   [[ "$output" == *"User data required"* ]]
+}
+
+@test "users update rejects invalid JSON" {
+  run ./yatti-api users update user_001 'not valid json'
+  [[ "$status" -eq 22 ]]
+  [[ "$output" == *"Invalid JSON format"* ]]
+}
+
+@test "users update rejects truncated JSON" {
+  run ./yatti-api users update user_001 '{"email":"updated@example.com"'
+  [[ "$status" -eq 22 ]]
+  [[ "$output" == *"Invalid JSON format"* ]]
 }
 
 @test "users update works with valid inputs" {

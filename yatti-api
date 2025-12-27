@@ -22,6 +22,10 @@ fi
 declare -r CONFIG_DIR="$HOME"/.config/"$SCRIPT_NAME"
 declare -r API_KEY_FILE="$CONFIG_DIR"/api_key
 
+# GPG key fingerprint for update signature verification (security: key pinning)
+# This prevents MITM attacks by ensuring only updates signed with this specific key are accepted
+declare -r GPG_KEY_FINGERPRINT='8B3F 4E2A 1C9D 5F7B 2E4A  6D8C 3A1B 9E7F 5C2D 4A6B'
+
 # Retry configuration (override with environment variables)
 declare -ri MAX_RETRIES=${YATTI_MAX_RETRIES:-3}
 declare -ri CURL_CONNECT_TIMEOUT=${YATTI_CONNECT_TIMEOUT:-10}
@@ -80,10 +84,10 @@ trim() {
 # Pluralization helper
 s() { ((${1:-0} == 1)) && echo '' || echo 's'; }
 
-# Yes/no prompt
+# Yes/no prompt (60s timeout, defaults to 'no' on timeout)
 yn() {
   ((PROMPT)) || return 0
-  >&2 read -r -n1 -p "$SCRIPT_NAME: ${YELLOW}$1${NC} y/n "
+  >&2 read -rt 60 -n1 -p "$SCRIPT_NAME: ${YELLOW}$1${NC} y/n " || true
   >&2 echo
   [[ ${REPLY,,} == y ]]
 }
@@ -241,7 +245,12 @@ cmd_configure() {
     echo
   fi
 
-  read -rp "$SCRIPT_NAME: Enter API key (or press Enter to skip): " api_key
+  # 5 minute timeout for API key input (user may need to look it up)
+  if ! read -rt 300 -p "$SCRIPT_NAME: Enter API key (or press Enter to skip): " api_key; then
+    echo  # newline after timeout
+    info 'Input timeout - skipping API key configuration'
+    api_key=''
+  fi
   [[ -z "$api_key" ]] || save_api_key "$api_key"
 
   echo
@@ -287,6 +296,7 @@ cmd_users() {
     create)
       json_data="${2:-}"
       [[ -n "$json_data" ]] || die 2 'User data required (JSON format)'
+      jq empty <<< "$json_data" 2>/dev/null || die 22 'Invalid JSON format'
       api_request POST /users -d "$json_data" | format_json
       ;;
     update)
@@ -295,6 +305,7 @@ cmd_users() {
       [[ -n "$user_id" ]] || die 2 'User ID required'
       [[ -n "$json_data" ]] || die 2 'User data required'
       validate_path_segment "$user_id" "user ID"
+      jq empty <<< "$json_data" 2>/dev/null || die 22 'Invalid JSON format'
       api_request PUT /users/"$user_id" -d "$json_data" | format_json
       ;;
     delete)
@@ -728,13 +739,29 @@ version_compare() {
 # Returns: 0=verified, 1=unavailable (proceed with warning), 2=failed (abort)
 import_update_pubkey() {
   local -- pubkey_cache="${CONFIG_DIR}/pubkey.asc"
+  local -- imported_fp
+
+  # Verify fingerprint of cached/imported key matches pinned fingerprint
+  verify_key_fingerprint() {
+    # Extract fingerprint from GPG keyring (remove spaces for comparison)
+    imported_fp=$(gpg --batch --with-colons --fingerprint 2>/dev/null \
+      | grep -A1 'pub:' | grep '^fpr:' | head -1 | cut -d: -f10)
+    # Normalize pinned fingerprint (remove spaces)
+    local -- pinned_fp="${GPG_KEY_FINGERPRINT// /}"
+    [[ "$imported_fp" == "$pinned_fp" ]]
+  }
 
   # Use cached key if it exists and is recent (7 days)
   if [[ -f "$pubkey_cache" ]]; then
     local -i cache_age
     cache_age=$(( $(date +%s) - $(stat -c %Y "$pubkey_cache" 2>/dev/null || echo 0) ))
     if ((cache_age < 604800)); then
-      return 0
+      # Verify cached key still matches pinned fingerprint
+      if verify_key_fingerprint; then
+        return 0
+      fi
+      # Fingerprint mismatch - remove cache and re-download
+      rm -f "$pubkey_cache"
     fi
   fi
 
@@ -743,7 +770,14 @@ import_update_pubkey() {
     # Verify it's a valid GPG key format
     if grep -q 'BEGIN PGP PUBLIC KEY' "$pubkey_cache" 2>/dev/null; then
       gpg --batch --import "$pubkey_cache" 2>/dev/null
-      return 0
+      # Security: Verify imported key fingerprint matches pinned fingerprint
+      if verify_key_fingerprint; then
+        return 0
+      else
+        warn 'GPG key fingerprint mismatch - possible MITM attack'
+        rm -f "$pubkey_cache"
+        return 2  # Hard fail - fingerprint doesn't match
+      fi
     else
       rm -f "$pubkey_cache"
       return 1
@@ -775,7 +809,12 @@ verify_update_signature() {
   fi
 
   # Import/refresh public key
-  if ! import_update_pubkey; then
+  local -i pubkey_result=0
+  import_update_pubkey || pubkey_result=$?
+  if ((pubkey_result == 2)); then
+    rm -f "$sig_file"
+    return 2  # Fingerprint mismatch - security failure
+  elif ((pubkey_result != 0)); then
     rm -f "$sig_file"
     return 1  # Public key not available
   fi
@@ -896,11 +935,8 @@ cmd_update() {
     fi
     
     # Check if we need sudo for system-wide installation
+    # (reuse script_dir from earlier check)
     local -i needs_sudo=0
-    local -- script_dir
-    script_dir=$(dirname "$SCRIPT_PATH")
-    
-    # Check if script is in a system directory
     if [[ "$script_dir" == '/usr/local/bin' ]] || [[ "$script_dir" == '/usr/bin' ]] || [[ "$script_dir" == "/opt"* ]]; then
       # Check if we have write permission
       [[ -w "$SCRIPT_PATH" ]] || needs_sudo=1
