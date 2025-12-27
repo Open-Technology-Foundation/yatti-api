@@ -19,7 +19,7 @@ if [[ -n "${YATTI_API_BASE:-}" ]] && [[ "${YATTI_TEST_MODE:-0}" != "1" ]]; then
     exit 1
   }
 fi
-declare -r CONFIG_DIR="$HOME"/.config/"$SCRIPT_NAME"
+declare -r CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}"/"$SCRIPT_NAME"
 declare -r API_KEY_FILE="$CONFIG_DIR"/api_key
 
 # GPG key fingerprint for update signature verification (security: key pinning)
