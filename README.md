@@ -651,6 +651,10 @@ yatti-api.1                     # Man page documentation
 yatti-api.bash_completion       # Bash completion
 CHANGELOG.md                    # Version history
 install.sh                      # One-line installer
+scripts/                        # Development scripts
+  ├── install-hooks.sh          # Install git hooks
+  └── hooks/                    # Git hook templates
+      └── pre-commit            # Shellcheck on commit
 tests/                          # Test suite (274 tests)
   ├── unit/                     # Unit tests (102 tests)
   │   ├── test_utils.bats       # Utility functions (16 tests)
@@ -683,6 +687,17 @@ tests/                          # Test suite (274 tests)
   ├── fixtures/                 # Mock data
   │   └── api_responses.json    # API response fixtures
   └── run_tests.sh              # Test runner
+```
+
+### Setup for Contributors
+
+```bash
+# Install git hooks (runs shellcheck on commit)
+./scripts/install-hooks.sh
+
+# Install shellcheck (required for pre-commit hook)
+sudo apt-get install shellcheck  # Ubuntu/Debian
+brew install shellcheck          # macOS
 ```
 
 ### Testing
