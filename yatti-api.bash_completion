@@ -79,13 +79,25 @@ _yatti_api_completions() {
       ;;
 
     knowledgebases|kb)
+      # Complete options if current word starts with -
+      if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W "-l --long" -- "$cur"))
+        return 0
+      fi
+
       if [[ $cword -eq 2 ]]; then
-        COMPREPLY=($(compgen -W "$kb_subcommands" -- "$cur"))
+        COMPREPLY=($(compgen -W "$kb_subcommands -l --long" -- "$cur"))
         return 0
       fi
 
       local subcmd="${words[2]}"
       case "$subcmd" in
+        -l|--long)
+          # After --long, suggest subcommands
+          if [[ $cword -eq 3 ]]; then
+            COMPREPLY=($(compgen -W "$kb_subcommands" -- "$cur"))
+          fi
+          ;;
         get)
           if [[ $cword -eq 3 ]]; then
             # Try to fetch available knowledge bases
