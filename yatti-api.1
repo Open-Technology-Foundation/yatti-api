@@ -49,7 +49,7 @@ Update user with JSON data.
 Delete a user.
 .RE
 .TP
-.BR kb ", " knowledgebases " [" list | get | sync "]"
+.BR kb ", " knowledgebases " [" list | get | sync "] [" options "]"
 Knowledgebase operations. Subcommands:
 .RS
 .TP
@@ -57,10 +57,17 @@ Knowledgebase operations. Subcommands:
 List all available knowledgebases (default).
 .TP
 .BI get " kb-name"
-Get details for a specific knowledgebase.
+Get details for a specific knowledgebase including long_description.
 .TP
 .B sync
 Trigger knowledgebase synchronization.
+.RE
+.IP
+Options:
+.RS
+.TP
+.BR \-l ", " \-\-long
+Display full knowledgebase descriptions (for list subcommand). Fetches long_description from the API for each knowledgebase.
 .RE
 .TP
 .BR query " [" options "]"
@@ -260,6 +267,14 @@ List available knowledgebases:
 .RS
 .nf
 $ yatti-api kb list
+.fi
+.RE
+.PP
+List knowledgebases with full descriptions:
+.PP
+.RS
+.nf
+$ yatti-api kb --long
 .fi
 .RE
 .PP
