@@ -651,8 +651,8 @@ yatti-api.1                     # Man page documentation
 yatti-api.bash_completion       # Bash completion
 CHANGELOG.md                    # Version history
 install.sh                      # One-line installer
-tests/                          # Test suite (251 tests)
-  ├── unit/                     # Unit tests (98 tests)
+tests/                          # Test suite (274 tests)
+  ├── unit/                     # Unit tests (102 tests)
   │   ├── test_utils.bats       # Utility functions (16 tests)
   │   ├── test_version_compare.bats  # Version comparison (17 tests)
   │   ├── test_validation.bats  # URL/path validation (18 tests)
@@ -661,7 +661,7 @@ tests/                          # Test suite (251 tests)
   │   ├── test_large_payloads.bats   # Large query handling (8 tests)
   │   ├── test_unicode_handling.bats # Unicode/i18n support (15 tests)
   │   └── test_error_resilience.bats # Error handling (14 tests)
-  ├── integration/              # Integration tests (142 tests)
+  ├── integration/              # Integration tests (172 tests)
   │   ├── test_cmd_configure.bats  # Configure command (17 tests)
   │   ├── test_cmd_query.bats   # Query command (22 tests)
   │   ├── test_cmd_users.bats   # Users command (16 tests)
@@ -674,7 +674,8 @@ tests/                          # Test suite (251 tests)
   │   ├── test_cmd_status.bats  # Status command (6 tests)
   │   ├── test_cmd_get_query.bats # Get query command (6 tests)
   │   ├── test_cmd_version.bats # Version command (5 tests)
-  │   └── test_retry_logic.bats # Retry mechanism (15 tests)
+  │   ├── test_retry_logic.bats # Retry mechanism (15 tests)
+  │   └── test_stdin_autodetect.bats # Stdin auto-detection (23 tests)
   ├── helpers/                  # Test utilities
   │   ├── test_helpers.bash     # Common functions
   │   ├── mocks.bash            # Mock functions
@@ -704,7 +705,7 @@ See [tests/README.md](tests/README.md) for complete testing documentation.
 
 - ✓ ShellCheck: 0 warnings
 - ✓ BCS (Bash Coding Standard): 100% compliant
-- ✓ Test Coverage: 95%+ (251 tests)
+- ✓ Test Coverage: 95%+ (274 tests)
 - ✓ Security Audit: Passed (URL validation, GPG verification, path traversal prevention)
 
 ### Requirements
