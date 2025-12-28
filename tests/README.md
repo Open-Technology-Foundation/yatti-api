@@ -4,28 +4,42 @@ Comprehensive test suite for the `yatti-api` command-line tool using BATS (Bash 
 
 ## Overview
 
-This test suite provides 95%+ code coverage with 93 test cases covering:
+This test suite provides 95%+ code coverage with 274 test cases covering:
 - **Unit Tests**: Individual function testing (utility functions, version comparison, API key management)
 - **Integration Tests**: End-to-end command testing (query, status, configure, help, version, etc.)
 - **Mock Infrastructure**: PATH-based curl mocking with environment variables
 - **Security Tests**: Validates file permissions, race conditions, and secure handling
 
-**Current Status**: 93 tests, 100% passing ✓
+**Current Status**: 274 tests, 100% passing ✓
 
 ## Directory Structure
 
 ```
 tests/
-├── unit/                       # Unit tests for individual functions
-│   ├── test_utils.bats        # trim(), s(), noarg(), decp() (16 tests)
+├── unit/                       # Unit tests (102 tests)
+│   ├── test_utils.bats         # trim(), s(), noarg(), decp() (16 tests)
 │   ├── test_version_compare.bats  # version_compare() (17 tests)
-│   └── test_api_key.bats      # load_api_key() (4 tests)
-├── integration/               # Integration tests for commands
+│   ├── test_api_key.bats       # load_api_key() (4 tests)
+│   ├── test_validation.bats    # URL/path validation (18 tests)
+│   ├── test_gpg_verification.bats # GPG signature verification (6 tests)
+│   ├── test_large_payloads.bats   # Large query handling (8 tests)
+│   ├── test_unicode_handling.bats # Unicode/i18n support (15 tests)
+│   └── test_error_resilience.bats # Error handling (14 tests)
+├── integration/               # Integration tests (172 tests)
+│   ├── test_api_request.bats   # API request handling (10 tests)
 │   ├── test_cmd_configure.bats # Configure command (17 tests)
-│   ├── test_cmd_help.bats     # Help command (6 tests)
-│   ├── test_cmd_query.bats    # Query command (22 tests)
-│   ├── test_cmd_status.bats   # Status command (6 tests)
-│   └── test_cmd_version.bats  # Version command (5 tests)
+│   ├── test_cmd_docs.bats      # Documentation command (12 tests)
+│   ├── test_cmd_get_query.bats # Get query command (6 tests)
+│   ├── test_cmd_help.bats      # Help command (6 tests)
+│   ├── test_cmd_history.bats   # History command (7 tests)
+│   ├── test_cmd_knowledgebases.bats # KB command (10 tests)
+│   ├── test_cmd_query.bats     # Query command (22 tests)
+│   ├── test_cmd_status.bats    # Status command (6 tests)
+│   ├── test_cmd_update.bats    # Update command (10 tests)
+│   ├── test_cmd_users.bats     # Users command (16 tests)
+│   ├── test_cmd_version.bats   # Version command (5 tests)
+│   ├── test_retry_logic.bats   # Retry mechanism (15 tests)
+│   └── test_stdin_autodetect.bats # Stdin edge cases (23 tests)
 ├── helpers/                   # Test utilities
 │   ├── test_helpers.bash      # Common setup/teardown functions
 │   ├── mocks.bash             # Mock functions for unit tests
@@ -97,7 +111,7 @@ cd tests && ./run_tests.sh
 
 ## Test Categories
 
-### Unit Tests (37 tests)
+### Unit Tests (102 tests)
 
 #### test_utils.bats (16 tests)
 Tests for utility functions:
@@ -122,7 +136,42 @@ Tests for API key management:
 - `load_api_key()` from environment (1 test)
 - `load_api_key()` empty file handling (1 test)
 
-### Integration Tests (56 tests)
+#### test_validation.bats (18 tests)
+Tests for input validation:
+- `validate_path_segment()` - path traversal prevention
+- `validate_query_param()` - query parameter sanitization
+- Various injection prevention tests
+
+#### test_gpg_verification.bats (6 tests)
+Tests for GPG signature verification:
+- Update signature verification
+- Key fingerprint pinning
+
+#### test_large_payloads.bats (8 tests)
+Tests for large query handling:
+- 10KB+ query processing
+- 100KB+ query warnings
+- File and stdin input methods
+
+#### test_unicode_handling.bats (15 tests)
+Tests for Unicode/i18n support:
+- CJK characters (Chinese, Japanese, Korean)
+- RTL text (Arabic, Hebrew)
+- Emoji and special characters
+
+#### test_error_resilience.bats (14 tests)
+Tests for error handling:
+- Malformed API responses
+- Network failures
+- Missing fields
+
+### Integration Tests (172 tests)
+
+#### test_api_request.bats (10 tests)
+Tests for API request handling:
+- HTTP status codes
+- Error responses
+- Network failures
 
 #### test_cmd_configure.bats (17 tests)
 Tests for the configure command:
@@ -132,11 +181,31 @@ Tests for the configure command:
 - API validation (4 tests)
 - Edge cases (2 tests)
 
+#### test_cmd_docs.bats (12 tests)
+Tests for documentation command:
+- User/API/technical docs
+- Format options (raw, html)
+
+#### test_cmd_get_query.bats (6 tests)
+Tests for get-query command:
+- Query ID validation
+- Response handling
+
 #### test_cmd_help.bats (6 tests)
 Tests for help command:
 - Help display (2 tests)
 - Options and examples (2 tests)
 - No API key required (2 tests)
+
+#### test_cmd_history.bats (7 tests)
+Tests for history command:
+- Limit parameter
+- KB filtering
+
+#### test_cmd_knowledgebases.bats (10 tests)
+Tests for kb command:
+- List/get/sync subcommands
+- --long flag support
 
 #### test_cmd_query.bats (22 tests)
 Tests for the main query command:
@@ -154,12 +223,35 @@ Tests for status command:
 - Subcommands (2 tests)
 - Error handling (2 tests)
 
+#### test_cmd_update.bats (10 tests)
+Tests for update command:
+- Version checking
+- GPG signature verification
+
+#### test_cmd_users.bats (16 tests)
+Tests for users command:
+- CRUD operations
+- Input validation
+
 #### test_cmd_version.bats (5 tests)
 Tests for version command:
 - Version display (2 tests)
 - Version format validation (1 test)
 - No API key required (1 test)
 - Non-verbose mode (1 test)
+
+#### test_retry_logic.bats (15 tests)
+Tests for retry mechanism:
+- Exponential backoff
+- Retryable vs non-retryable errors
+
+#### test_stdin_autodetect.bats (23 tests)
+Tests for stdin auto-detection:
+- Explicit `-q -` flag
+- Auto-detection when piped
+- Empty/whitespace handling
+- Heredoc input
+- Precedence rules
 
 ## Mock Infrastructure
 
@@ -353,12 +445,16 @@ Current coverage (estimated):
 
 | Component | Coverage | Tests |
 |-----------|----------|-------|
-| Utility Functions | 100% | 19 |
-| API Key Management | 100% | 17 |
+| Utility Functions | 100% | 16 |
+| Validation | 100% | 18 |
 | Version Compare | 100% | 17 |
-| Query Command | 80% | 25 |
-| Status Command | 90% | 6 |
-| **TOTAL** | **~85%** | **84+** |
+| API Key Management | 100% | 4 |
+| GPG Verification | 100% | 6 |
+| Large Payloads | 100% | 8 |
+| Unicode Handling | 100% | 15 |
+| Error Resilience | 100% | 14 |
+| Commands (integration) | 95% | 172 |
+| **TOTAL** | **95%+** | **274** |
 
 ## Troubleshooting
 
@@ -444,8 +540,8 @@ For issues with tests:
 
 ---
 
-**Last Updated**: 2025-11-16
-**Test Suite Version**: 1.0.0
+**Last Updated**: 2025-12-28
+**Test Suite Version**: 1.4.2
 **Coverage Target**: 95%+
 
 #fin
