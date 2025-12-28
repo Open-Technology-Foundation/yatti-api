@@ -322,18 +322,52 @@ cmd_users() {
 
 # Command: knowledgebases (kb)
 cmd_knowledgebases() {
-  local -- subcommand="${1:-list}" kb_name
-  
+  local -- subcommand='' kb_name='' cfg_file long_desc
+  local -i show_long=0
+  local -a pos_args=()
+
+  # Parse flags and collect positional args
+  while (($#)); do case $1 in
+    -l|--long)  show_long=1 ;;
+    -*)         die 22 "Unknown option ${1@Q}" ;;
+    *)          pos_args+=("$1") ;;
+  esac; shift; done
+  subcommand="${pos_args[0]:-list}"
+  kb_name="${pos_args[1]:-}"
+
   case "$subcommand" in
     list)
       info 'Available Knowledgebases:'
-      api_request GET /knowledgebases | jq -r '.data.knowledgebases[] | "\(.name) - \(.description // "No description")"' 2>/dev/null || api_request GET /knowledgebases | format_json
+      if ((show_long)); then
+        # Fetch KB list and display with long descriptions from cfg files
+        api_request GET /knowledgebases | jq -r '.data.knowledgebases[].name' 2>/dev/null | while IFS= read -r kb_name; do
+          cfg_file="/var/lib/vectordbs/${kb_name}/${kb_name}.cfg"
+          if [[ -r "$cfg_file" ]]; then
+            # Extract long_desc from [WAHID] section, handling multi-line quoted values
+            long_desc=$(sed -n '/^\[WAHID\]/,/^\[/{ /^long_desc[[:space:]]*=/{ s/^long_desc[[:space:]]*=[[:space:]]*//; s/^"//; s/"$//; p; q; } }' "$cfg_file")
+            # Convert literal \n to actual newlines
+            long_desc="${long_desc//\\n/$'\n'}"
+            [[ -n "$long_desc" ]] || long_desc="No long description available"
+          else
+            long_desc="No cfg file found"
+          fi
+          printf '\n\033[1;36m%s\033[0m\n%s\n' "$kb_name" "$long_desc"
+        done
+      else
+        api_request GET /knowledgebases | jq -r '.data.knowledgebases[] | "\(.name) - \(.description // "No description")"' 2>/dev/null || api_request GET /knowledgebases | format_json
+      fi
       ;;
     get)
-      kb_name="${2:-}"
       [[ -n "$kb_name" ]] || die 2 'Knowledgebase name required'
       validate_path_segment "$kb_name" "knowledgebase name"
-      api_request GET /knowledgebases/"$kb_name" | format_json
+      # Fetch API response and inject long_desc from cfg file
+      cfg_file="/var/lib/vectordbs/${kb_name}/${kb_name}.cfg"
+      if [[ -r "$cfg_file" ]]; then
+        long_desc=$(sed -n '/^\[WAHID\]/,/^\[/{ /^long_desc[[:space:]]*=/{ s/^long_desc[[:space:]]*=[[:space:]]*//; s/^"//; s/"$//; p; q; } }' "$cfg_file")
+      else
+        long_desc=""
+      fi
+      api_request GET /knowledgebases/"$kb_name" | jq --arg ld "$long_desc" '.data.long_description = $ld' | format_json
       ;;
     sync)
       info 'Syncing knowledgebases from filesystem...'
@@ -661,7 +695,7 @@ Commands:
   configure                    Configure API key and settings
   status [health|info]         Check API status
   users [subcommand]           User management
-  kb, knowledgebases [sub]     Knowledgebase operations
+  kb, knowledgebases [sub]     Knowledgebase operations (list [-l|--long], get, sync)
   query [options]              Execute a RAG query
   history [limit] [kb]         View query history
   get-query <id>               Get specific query result
