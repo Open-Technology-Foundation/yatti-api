@@ -339,18 +339,10 @@ cmd_knowledgebases() {
     list)
       info 'Available Knowledgebases:'
       if ((show_long)); then
-        # Fetch KB list and display with long descriptions from cfg files
+        # Fetch KB list and display with long descriptions from API
         api_request GET /knowledgebases | jq -r '.data.knowledgebases[].name' 2>/dev/null | while IFS= read -r kb_name; do
-          cfg_file="/var/lib/vectordbs/${kb_name}/${kb_name}.cfg"
-          if [[ -r "$cfg_file" ]]; then
-            # Extract long_desc from [WAHID] section, handling multi-line quoted values
-            long_desc=$(sed -n '/^\[WAHID\]/,/^\[/{ /^long_desc[[:space:]]*=/{ s/^long_desc[[:space:]]*=[[:space:]]*//; s/^"//; s/"$//; p; q; } }' "$cfg_file")
-            # Convert literal \n to actual newlines
-            long_desc="${long_desc//\\n/$'\n'}"
-            [[ -n "$long_desc" ]] || long_desc="No long description available"
-          else
-            long_desc="No cfg file found"
-          fi
+          long_desc=$(api_request GET /knowledgebases/"$kb_name" 2>/dev/null | jq -r '.data.long_description // empty')
+          [[ -n "$long_desc" ]] || long_desc="No long description available"
           printf '\n\033[1;36m%s\033[0m\n%s\n' "$kb_name" "$long_desc"
         done
       else
@@ -360,14 +352,8 @@ cmd_knowledgebases() {
     get)
       [[ -n "$kb_name" ]] || die 2 'Knowledgebase name required'
       validate_path_segment "$kb_name" "knowledgebase name"
-      # Fetch API response and inject long_desc from cfg file
-      cfg_file="/var/lib/vectordbs/${kb_name}/${kb_name}.cfg"
-      if [[ -r "$cfg_file" ]]; then
-        long_desc=$(sed -n '/^\[WAHID\]/,/^\[/{ /^long_desc[[:space:]]*=/{ s/^long_desc[[:space:]]*=[[:space:]]*//; s/^"//; s/"$//; p; q; } }' "$cfg_file")
-      else
-        long_desc=""
-      fi
-      api_request GET /knowledgebases/"$kb_name" | jq --arg ld "$long_desc" '.data.long_description = $ld' | format_json
+      # API now returns long_description directly
+      api_request GET /knowledgebases/"$kb_name" | format_json
       ;;
     sync)
       info 'Syncing knowledgebases from filesystem...'
