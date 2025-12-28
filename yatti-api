@@ -24,7 +24,7 @@ declare -r API_KEY_FILE="$CONFIG_DIR"/api_key
 
 # GPG key fingerprint for update signature verification (security: key pinning)
 # This prevents MITM attacks by ensuring only updates signed with this specific key are accepted
-declare -r GPG_KEY_FINGERPRINT='8B3F 4E2A 1C9D 5F7B 2E4A  6D8C 3A1B 9E7F 5C2D 4A6B'
+declare -r GPG_KEY_FINGERPRINT='D74C AD41 CE48 F791 62B9  90CE B7D6 50DD 9F9B 7B63'
 
 # Retry configuration (override with environment variables)
 declare -ri MAX_RETRIES=${YATTI_MAX_RETRIES:-3}
