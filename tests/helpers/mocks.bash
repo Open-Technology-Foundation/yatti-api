@@ -1,6 +1,36 @@
 #!/usr/bin/env bash
 # Mock Functions for YaTTi API Client Tests
-# Provides mock implementations of external commands (curl, jq, etc.)
+#
+# This module provides mock implementations that replace external commands
+# (curl, jq, mktemp, etc.) during testing. Mocks intercept calls and return
+# controlled responses for deterministic test behavior.
+#
+# Main Mock Functions:
+#   mock_curl()                  - Replace curl with mock that uses global vars
+#   set_mock_curl_response()     - Set response body and HTTP code
+#   set_mock_curl_url_response() - Set response for specific URL pattern
+#   set_mock_curl_fail()         - Make curl simulate connection failure
+#   reset_mock_curl()            - Reset all mock state
+#
+# Response Generators (return JSON for common API endpoints):
+#   mock_api_status_response()         - Status endpoint response
+#   mock_api_knowledgebases_response() - Knowledgebase list response
+#   mock_api_query_response()          - Query result response
+#   mock_api_version_check_response()  - Version check response
+#   mock_api_error_response()          - Error response with code/message
+#
+# Other Mocks:
+#   mock_jq()       - Pass-through to real jq (dependency)
+#   mock_install()  - Mock install command for file creation tests
+#   mock_mktemp()   - Mock mktemp for temp file tests
+#   mock_realpath() - Mock realpath for path resolution tests
+#
+# Example:
+#   source mocks.bash
+#   mock_curl
+#   set_mock_curl_response '{"status":"ok"}' 200
+#   # Now curl calls in tested code return mocked data
+#
 
 # Global mock state
 declare -g MOCK_CURL_RESPONSE=""

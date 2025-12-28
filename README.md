@@ -1,182 +1,55 @@
 # YaTTi API Client
 
-**Access specialized knowledgebases with AI-powered queries**
+**Query specialized knowledgebases with AI-powered RAG**
 
-YaTTi gives you command-line access to curated knowledge domains using sophisticated RAG (Retrieval Augmented Generation) powered by [customkb](https://github.com/Open-Technology-Foundation/customkb). Ask questions, get answers backed by authoritative sources across multiple specialized fields.
+## Quick Start
 
-## Table of Contents
-
-- [What's New](#whats-new) ◉ **Retry logic, man page, query sizes & security**
-- [Available Knowledgebases](#available-knowledgebases)
-- [Quick Start](#quick-start)
-- [Example Queries](#example-queries)
-- [Large Query Input](#large-query-input) - **File & stdin support**
-- [Features](#features)
-- [Installation](#installation)
-- [Usage Reference](#usage-reference)
-- [Configuration](#configuration)
-- [Troubleshooting](#troubleshooting)
-- [Development](#development)
-- [Contributing](#contributing)
-- [Quick Reference](#quick-reference) - **Use cases & integration**
-- [Support](#support)
-
----
-
-## What's New
-
-### ◉ Automatic Retry with Exponential Backoff (Latest)
-
-The client now automatically retries transient failures:
-
-| Error Type | Behavior |
-|------------|----------|
-| HTTP 429 (Rate Limit) | Retried with backoff |
-| HTTP 5xx (Server Error) | Retried with backoff |
-| Connection failures | Retried with backoff |
-| HTTP 4xx (Client Error) | Not retried (except 429) |
-
-**Configuration:**
+**1. Install** (one command):
 ```bash
-export YATTI_MAX_RETRIES=3         # Max attempts (default: 3, set to 1 to disable)
-export YATTI_TIMEOUT=60            # Request timeout seconds (default: 60)
-export YATTI_CONNECT_TIMEOUT=10    # Connection timeout seconds (default: 10)
+curl -fsSL https://yatti.id/v1/install | bash
 ```
 
-**Backoff sequence:** 1s → 2s → 4s
-
-### ◉ Man Page Documentation (Latest)
-
-Full documentation is now available via man page:
-
+**2. Configure** your API key:
 ```bash
-man yatti-api                      # View documentation
+yatti-api configure
 ```
 
-Install the man page:
+**3. Query** a knowledgebase:
 ```bash
-sudo install -m 644 yatti-api.1 /usr/local/share/man/man1/
-sudo mandb
+yatti-api query seculardharma "What is mindfulness?"
 ```
 
----
-
-## v1.4.0
-
-### ◉ Unlimited Query Size Support
-
-Previous versions were limited to ~128 KB for queries due to shell argument constraints. Version 1.4.0 removes this limitation entirely:
-
-**New Features:**
-- **File input** (`-Q`) - Read queries from files of any size
-- **Stdin support** (`-q -`) - Pipe unlimited query text from any source
-- **Auto-detection** - Automatic stdin handling when piping to the command
-- **Size feedback** - Helpful messages for large queries with optimization tips
-
-**Example:**
-```bash
-# Old way: Limited to ~128 KB
-yatti-api query kb "short query"
-
-# New way: Unlimited size
-yatti-api query kb -Q large_research_query.txt
-cat document.txt | yatti-api query kb -q -
-```
-
-**Backward Compatible:** All existing commands continue to work exactly as before.
-
-See the [Large Query Input](#large-query-input) section for complete documentation.
-
-### ◉ Security Enhancements
-
-Version 1.4.0 includes significant security improvements:
-
-- **URL validation** - API base URL is validated to prevent endpoint hijacking
-- **GPG signature verification** - Update downloads are verified with GPG signatures when available
-- **Path traversal prevention** - Input validation blocks malicious path segments
-- **Secure temp files** - Uses `TMPDIR` with unique filenames for temporary operations
-- **Masked API key** - API keys are partially masked in version output (shows only last 4 characters)
-- **Symlink warnings** - Warns when query files are symlinks to prevent unintended file access
-- **Atomic file operations** - API key file creation uses secure atomic patterns
+> **Need more?** See [Available Knowledgebases](#available-knowledgebases) | [Example Queries](#example-queries) | [All Options](#usage-reference)
 
 ---
 
 ## Available Knowledgebases
 
-Knowledgebases are updated regularly. To obtain a list of current knowledgebases enter `yatti-api kb`.  Here are a few of these specialized knowledge domains:
+Run `yatti-api kb list` for the complete list. Popular domains:
 
-### Academic & Research
-- **appliedanthropology** - Applied anthropology research and practice
-- **prosocial.world** - Prosocial behavior and social evolution
-
-### Regional & Cultural
-- **jakartapost** - Indonesian news and current affairs (extensive archive)
-- **peraturan.go.id** - Indonesian laws and regulations
-
-### Professional & Technical
-- **okusiassociates** - Corporate services and Indonesian business operations
-
-### Personal & Philosophy
-- **seculardharma** - Secular Buddhist philosophy and mindfulness practice
-
+| Knowledgebase | Description |
+|---------------|-------------|
+| seculardharma | Buddhist philosophy and mindfulness |
+| jakartapost | Indonesian news archive (use `--timeout 300`) |
+| peraturan.go.id | Indonesian laws and regulations |
+| appliedanthropology | Anthropology research and practice |
+| prosocial.world | Social evolution and cooperation |
+| okusiassociates | Indonesian business operations |
 
 ---
 
-## Quick Start
+## Table of Contents
 
-### One-Line Install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Open-Technology-Foundation/yatti-api/main/install.sh | bash
-```
-
-Or install manually:
-
-```bash
-sudo curl -o /usr/local/bin/yatti-api https://yatti.id/v1/client/download
-sudo chmod +x /usr/local/bin/yatti-api
-```
-
-### First Query
-
-```bash
-# Configure your API key
-yatti-api configure
-
-# Try a simple query
-yatti-api query seculardharma "What is mindfulness meditation?"
-
-# Or use a more complex query from stdin
-yatti-api query seculardharma -q - <<'EOF'
-Explain the relationship between mindfulness practice
-and the development of meta-awareness in meditation.
-EOF
-```
-
-### Quick Examples
-
-**Short queries (command-line):**
-```bash
-yatti-api query jakartapost "Indonesian economic development"
-```
-
-**Long queries (file):**
-```bash
-# Create a query file
-echo "Provide a comprehensive analysis of..." > query.txt
-
-# Execute it
-yatti-api query appliedanthropology -Q query.txt
-```
-
-**Piped queries (stdin):**
-```bash
-cat research_question.txt | yatti-api query seculardharma -q -
-```
-
-### Windows Users
-
-**Using Windows?** See the [Windows Installation Guide](#windows-installation-wsl) below for WSL setup instructions.
+- [Example Queries](#example-queries) - Practical query examples
+- [Large Query Input](#large-query-input) - File and stdin support
+- [Features](#features) - Full feature list
+- [Installation](#installation) - Linux, macOS, Windows
+- [Usage Reference](#usage-reference) - Commands and options
+- [Configuration](#configuration) - API key, environment
+- [Troubleshooting](#troubleshooting) - Common issues
+- [Quick Reference](#quick-reference) - Use cases and tips
+- [Development](#development) - Testing, contributing
+- [Release Notes](#release-notes) - Version history
 
 ---
 
@@ -939,9 +812,28 @@ done
 
 ---
 
+## Release Notes
+
+### v1.4.1 (Latest)
+
+- **Retry logic** with exponential backoff for transient failures (429, 5xx)
+- **Man page** documentation (`man yatti-api`)
+- **Security:** JSON input validation, GPG key pinning, read timeouts
+- **XDG compliance** for config directory
+
+### v1.4.0
+
+- **Unlimited query size** via file input (`-Q`) and stdin (`-q -`)
+- **Security:** URL validation, GPG signature verification, path traversal prevention
+- **Masked API keys** in version output
+
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
+
+---
+
 ## Support
 
-- **Documentation:** Run `yatti-api help` or `yatti-api docs`
+- **Documentation:** `yatti-api help` or `man yatti-api`
 - **API Docs:** https://yatti.id/admin/
 - **Issues:** https://github.com/Open-Technology-Foundation/yatti-api/issues
 - **Website:** https://yatti.id
@@ -950,19 +842,17 @@ done
 
 ## Version
 
-Current version: **1.4.0**
-
-Check for updates:
+Current version: **1.4.1**
 
 ```bash
-yatti-api update --check
+yatti-api update --check    # Check for updates
 ```
 
 ---
 
 ## License
 
-GPL-3. See LICENSE
+GPL-3.0. See [LICENSE](LICENSE).
 
 ---
 

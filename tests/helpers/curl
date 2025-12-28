@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Mock curl for testing - returns mocked responses from environment variables
 #
+# This script replaces curl during testing by being placed earlier in PATH.
+# It returns controlled responses based on environment variables, enabling
+# deterministic testing of HTTP request handling.
+#
 # Environment variables:
 #   MOCK_CURL_RESPONSE      - JSON response body
 #   MOCK_CURL_HTTP_CODE     - HTTP status code (default: 200)
@@ -8,6 +12,18 @@
 #   MOCK_CURL_EXIT_CODE     - Custom exit code (default: 0)
 #   MOCK_CURL_CALL_COUNT    - Path to file for tracking call count
 #   MOCK_CURL_RESPONSES     - Path to file with line-delimited responses (for retry testing)
+#
+# Example usage in BATS test:
+#   export MOCK_CURL_RESPONSE='{"status":"ok"}'
+#   export MOCK_CURL_HTTP_CODE=200
+#   run ./yatti-api status
+#   [[ "$status" -eq 0 ]]
+#
+# For retry testing with multiple sequential responses:
+#   echo -e "500:{\"error\":\"fail\"}\n200:{\"status\":\"ok\"}" > "$BATS_TMPDIR/responses"
+#   export MOCK_CURL_RESPONSES="$BATS_TMPDIR/responses"
+#   export MOCK_CURL_CALL_COUNT="$BATS_TMPDIR/count"
+#   # First call returns 500, second returns 200
 
 # Increment call counter if tracking file is set
 if [[ -n "${MOCK_CURL_CALL_COUNT:-}" ]]; then
