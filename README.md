@@ -25,7 +25,7 @@ yatti-api query seculardharma "What is mindfulness?"
 
 ## Available Knowledgebases
 
-Run `yatti-api kb list` for the complete list. Popular domains:
+Run `yatti-api kb list` for the complete list, or `kb list --long` for full descriptions. Popular domains:
 
 | Knowledgebase | Description |
 |---------------|-------------|
@@ -319,7 +319,7 @@ yatti-api query jakartapost -Q large_query.txt --timeout 300
 - **Timeout control** - Adjust processing time limits (60-600 seconds)
 
 ### Knowledgebase Management
-- List available knowledgebases
+- List available knowledgebases with `--long` for full descriptions
 - View metadata and statistics
 - Sync updates from filesystem (admin)
 
@@ -443,6 +443,7 @@ yatti-api version
 yatti-api help                    # Show help
 yatti-api status                  # Check API status
 yatti-api kb list                 # List knowledgebases
+yatti-api kb list --long          # List with full descriptions
 yatti-api query KB "question"     # Query a knowledgebase
 yatti-api history                 # View query history
 yatti-api configure               # Configure API key
@@ -497,6 +498,7 @@ yatti-api query -K <knowledgebase> -q - [OPTIONS]
 
 ```bash
 yatti-api kb list                    # List all knowledgebases
+yatti-api kb list --long             # List with full descriptions
 yatti-api kb get seculardharma       # Get KB info and stats
 yatti-api kb sync                    # Sync from filesystem (admin)
 ```
@@ -644,12 +646,12 @@ cat long_query.txt | yatti-api query seculardharma -q -
 ### Project Structure
 
 ```
-yatti-api                       # Main bash script (~1000 lines)
+yatti-api                       # Main bash script (~1100 lines)
 yatti-api.1                     # Man page documentation
 yatti-api.bash_completion       # Bash completion
 CHANGELOG.md                    # Version history
 install.sh                      # One-line installer
-tests/                          # Test suite (240 tests)
+tests/                          # Test suite (251 tests)
   ├── unit/                     # Unit tests (98 tests)
   │   ├── test_utils.bats       # Utility functions (16 tests)
   │   ├── test_version_compare.bats  # Version comparison (17 tests)
@@ -702,7 +704,7 @@ See [tests/README.md](tests/README.md) for complete testing documentation.
 
 - ✓ ShellCheck: 0 warnings
 - ✓ BCS (Bash Coding Standard): 100% compliant
-- ✓ Test Coverage: 95%+ (240 tests)
+- ✓ Test Coverage: 95%+ (251 tests)
 - ✓ Security Audit: Passed (URL validation, GPG verification, path traversal prevention)
 
 ### Requirements
@@ -814,7 +816,13 @@ done
 
 ## Release Notes
 
-### v1.4.1 (Latest)
+### v1.4.2 (Latest)
+
+- **`kb list --long`** flag to display full knowledgebase descriptions
+- **`kb get`** now includes `long_description` field in JSON output
+- **API-based descriptions** - `kb --long` fetches from API (works on all servers)
+
+### v1.4.1
 
 - **Retry logic** with exponential backoff for transient failures (429, 5xx)
 - **Man page** documentation (`man yatti-api`)
@@ -842,7 +850,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ## Version
 
-Current version: **1.4.1**
+Current version: **1.4.2**
 
 ```bash
 yatti-api update --check    # Check for updates
