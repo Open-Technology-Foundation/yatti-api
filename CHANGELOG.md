@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.2] - 2025-12-28
+
 ### Added
 - `kb list -l|--long` flag to display full knowledgebase descriptions
 - `kb get` now includes `long_description` field in JSON output
