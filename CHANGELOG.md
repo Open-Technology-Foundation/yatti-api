@@ -8,8 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- `kb list -l|--long` flag to display full knowledgebase descriptions from cfg files
-- `kb get` now includes `long_description` field in JSON output (from WAHID section of kb.cfg)
+- `kb list -l|--long` flag to display full knowledgebase descriptions
+- `kb get` now includes `long_description` field in JSON output
+
+### Changed
+- `kb --long` now fetches descriptions from API instead of local cfg files (works on all servers)
 
 ## [1.4.1] - 2025-12-27
 
