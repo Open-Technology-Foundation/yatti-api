@@ -282,7 +282,7 @@ EOF
 # Generate mock API response for version check
 mock_api_version_check_response() {
   local -- current_version="${1:-1.4.0}"
-  local -- latest_version="${2:-1.4.1}"
+  local -- latest_version="${2:-1.4.2}"
   local -i update_available=0
 
   if [[ "$latest_version" != "$current_version" ]]; then

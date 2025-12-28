@@ -16,9 +16,13 @@ teardown() {
 # Version command tests
 
 @test "version command displays version" {
+  # Get version from script
+  local script_version
+  script_version=$(grep "^declare -r VERSION=" ./yatti-api | cut -d"'" -f2)
+
   run ./yatti-api version
   [[ "$status" -eq 0 ]]
-  [[ "$output" == *"1.4.1"* ]]
+  [[ "$output" == *"$script_version"* ]]
 }
 
 @test "version command format is correct" {
@@ -48,9 +52,13 @@ teardown() {
 }
 
 @test "version command works in non-verbose mode" {
+  # Get version from script
+  local script_version
+  script_version=$(grep "^declare -r VERSION=" ./yatti-api | cut -d"'" -f2)
+
   VERBOSE=0 run ./yatti-api version
   [[ "$status" -eq 0 ]]
-  [[ "$output" == *"1.4.1"* ]]
+  [[ "$output" == *"$script_version"* ]]
 }
 
 #fin
