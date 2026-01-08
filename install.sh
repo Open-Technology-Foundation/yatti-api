@@ -5,6 +5,37 @@
 set -euo pipefail
 shopt -s inherit_errexit shift_verbose extglob nullglob
 
+# Help message
+show_help() {
+  cat <<'EOF'
+YaTTi API Client Installer
+
+Usage:
+  curl -fsSL https://yatti.id/v1/client/install | bash
+  ./install.sh [-h|--help]
+
+Options:
+  -h, --help    Show this help message
+
+Description:
+  Downloads and installs the yatti-api CLI tool to /usr/local/bin.
+  Also installs man page and bash completion if possible.
+
+Post-installation:
+  1. Configure API key:  yatti-api configure
+  2. Test a query:       yatti-api query seculardharma "What is mindfulness?"
+  3. List KBs:           yatti-api kb list
+
+Repository: https://github.com/Open-Technology-Foundation/yatti-api
+EOF
+  exit 0
+}
+
+# Parse arguments
+case "${1:-}" in
+  -h|--help) show_help ;;
+esac
+
 # Colors for output
 declare -r GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' NC=$'\033[0m'
 
