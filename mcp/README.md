@@ -49,8 +49,9 @@ curl -fsSL https://raw.githubusercontent.com/Open-Technology-Foundation/yatti-ap
 
 ## Configuration
 
-Add to `~/.claude/settings.local.json` or `/etc/claude-code/managed-mcp.json`:
+Add to `~/.claude/settings.local.json` or `/etc/claude-code/managed-mcp.json`.
 
+**If installed with uv:**
 ```json
 {
   "mcpServers": {
@@ -63,10 +64,23 @@ Add to `~/.claude/settings.local.json` or `/etc/claude-code/managed-mcp.json`:
 }
 ```
 
+**If installed with pip:**
+```json
+{
+  "mcpServers": {
+    "yatti": {
+      "command": "/usr/local/share/yatti/yatti-api-mcp/.venv/bin/python",
+      "args": ["-m", "mcp_server.server"],
+      "env": {}
+    }
+  }
+}
+```
+
 ## Requirements
 
 - Python 3.12+
-- [uv](https://docs.astral.sh/uv/) package manager
+- [uv](https://docs.astral.sh/uv/) (preferred) or pip
 - `yatti-api` CLI installed and in PATH
 - Valid YaTTi API key configured (`~/.config/yatti-api/api_key` or `YATTI_API_KEY` env var)
 
