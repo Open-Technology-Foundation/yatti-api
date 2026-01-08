@@ -37,19 +37,60 @@ This MCP server wraps the `yatti-api` CLI to expose knowledgebase query capabili
 
 ## Installation
 
-The MCP server is included in the yatti-api repository under `mcp/`.
+Run the installer to copy MCP server files to `/usr/local/share/yatti/yatti-api-mcp/`:
 
 ```bash
-# Install dependencies
-cd /ai/scripts/yatti-api/mcp
-uv sync
+# From the repository
+sudo ./mcp/install.sh
+
+# Or directly from GitHub
+curl -fsSL https://raw.githubusercontent.com/Open-Technology-Foundation/yatti-api/main/mcp/install.sh | sudo bash
 ```
 
 ## Configuration
 
-Add to `/etc/claude-code/managed-mcp.json`:
+Add to `~/.claude/settings.local.json` or `/etc/claude-code/managed-mcp.json`:
 
 ```json
+{
+  "mcpServers": {
+    "yatti": {
+      "command": "uv",
+      "args": ["run", "--directory", "/usr/local/share/yatti/yatti-api-mcp", "python", "-m", "mcp_server.server"],
+      "env": {}
+    }
+  }
+}
+```
+
+## Requirements
+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) package manager
+- `yatti-api` CLI installed and in PATH
+- Valid YaTTi API key configured (`~/.config/yatti-api/api_key` or `YATTI_API_KEY` env var)
+
+## Testing
+
+```bash
+cd /usr/local/share/yatti/yatti-api-mcp
+
+# Test module import
+uv run python -c "import mcp_server; print('OK')"
+
+# Test CLI directly
+yatti-api query seculardharma "What is mindfulness?"
+```
+
+## Okusi Development
+
+For Okusi internal servers (okusi, ok0-3), the MCP server runs from the repository:
+
+```bash
+# Path
+/ai/scripts/yatti-api/mcp
+
+# Configuration
 {
   "mcpServers": {
     "yatti": {
@@ -60,30 +101,6 @@ Add to `/etc/claude-code/managed-mcp.json`:
   }
 }
 ```
-
-## Requirements
-
-- Python 3.12+
-- `yatti-api` CLI installed and in PATH
-- Valid YaTTi API key configured (`~/.config/yatti-api/api_key` or `YATTI_API_KEY` env var)
-
-## Testing
-
-```bash
-cd /ai/scripts/yatti-api/mcp
-
-# Test module import
-uv run python -c "import mcp_server; print('OK')"
-
-# Test CLI directly
-yatti-api query seculardharma "What is mindfulness?"
-```
-
-## Deployment
-
-Deployed on:
-- okusi (development)
-- ok0, ok1, ok2, ok3 (production)
 
 ## Version
 
