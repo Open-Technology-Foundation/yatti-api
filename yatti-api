@@ -4,9 +4,9 @@ set -euo pipefail
 shopt -s inherit_errexit extglob nullglob
 
 # Script metadata
-declare -r VERSION='1.4.2'
+declare -r VERSION='1.4.3'
 #shellcheck disable=SC2155
-declare -r SCRIPT_PATH=$(realpath -e -- "$0")
+declare -r SCRIPT_PATH=$(realpath -- "$0")
 declare -r SCRIPT_NAME=${SCRIPT_PATH##*/}
 
 # Configuration constants
@@ -41,8 +41,8 @@ else
 fi
 # Core message function using FUNCNAME for context
 _msg() {
-  local -- status="${FUNCNAME[1]}" prefix="$SCRIPT_NAME" msg
-  case "$status" in
+  local -- prefix="$SCRIPT_NAME" msg
+  case ${FUNCNAME[1]} in
     success) prefix+=": ${GREEN}✓${NC}" ;;
     warn)    prefix+=" ${YELLOW}▲${NC}" ;;
     info)    prefix+=": ${CYAN}◉${NC}" ;;
@@ -59,7 +59,7 @@ warn() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
 info() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
 # Unconditional output
 error() { >&2 _msg "$@"; }
-die() { (($# > 1)) && error "${@:2}"; exit "${1:-0}"; }
+die() { (($# < 2)) || error "${@:2}"; exit "${1:-0}"; }
 
 # Argument validation
 noarg() {
@@ -170,7 +170,7 @@ api_request() {
 
   # Retry loop with exponential backoff
   while ((attempt < MAX_RETRIES)); do
-    ((++attempt))  # Use pre-increment to avoid set -e failure when attempt=0
+    attempt+=1
 
     # Make request and capture both response and HTTP code
     # Note: Don't use -f flag - we need to capture response body for error messages
@@ -186,7 +186,7 @@ api_request() {
     # Check for curl-level failures (connection errors, timeouts)
     if ((curl_exit != 0)) && [[ -z "$response" || "$response" == *"__HTTP_CODE__000"* ]]; then
       if ((attempt < MAX_RETRIES)); then
-        ((VERBOSE)) && warn "Connection failed (curl exit $curl_exit), retry $attempt/$MAX_RETRIES in ${backoff}s..."
+        warn "Connection failed (curl exit $curl_exit), retry $attempt/$MAX_RETRIES in ${backoff}s..."
         sleep "$backoff"
         backoff=$((backoff * 2))
         curl_exit=0
@@ -204,7 +204,7 @@ api_request() {
       echo "$response"
       return 0
     elif is_retryable_error "$http_code" && ((attempt < MAX_RETRIES)); then
-      ((VERBOSE)) && warn "HTTP $http_code, retry $attempt/$MAX_RETRIES in ${backoff}s..."
+      warn "HTTP $http_code, retry $attempt/$MAX_RETRIES in ${backoff}s..."
       sleep "$backoff"
       backoff=$((backoff * 2))
       continue
@@ -322,7 +322,7 @@ cmd_users() {
 
 # Command: knowledgebases (kb)
 cmd_knowledgebases() {
-  local -- subcommand='' kb_name='' cfg_file long_desc
+  local -- subcommand='' kb_name='' long_desc
   local -i show_long=0
   local -a pos_args=()
 
@@ -367,7 +367,7 @@ cmd_knowledgebases() {
 
 # Command: query
 cmd_query() {
-  local -- kb_name='' query_text='' query_file='' temperature='0.0' model='gpt-5.2'
+  local -- kb_name='' query_text='' query_file='' temperature='0.0' model='claude-sonnet-4-5'
   local -i force_refresh=0 context_only=0
   local -i cache_ttl=86400
   local -- max_tokens='' prompt_template=''
@@ -453,7 +453,7 @@ EOT
     # Read from file
     [[ -f "$query_file" ]] || die 2 "Query file not found: ${query_file@Q}"
     # Security: warn about symlinks (could point to sensitive files)
-    [[ -L "$query_file" ]] && warn "Query file is a symlink - ensure target is intended"
+    [[ ! -L "$query_file" ]] || warn "Query file is a symlink - ensure target is intended"
     query_text=$(cat "$query_file")
     info "Read query from file (${#query_text} characters)"
   elif [[ "$query_text" == "-" ]]; then
@@ -740,10 +740,10 @@ version_compare() {
   
   # Pad arrays to same length
   local -i max_len=$((${#V1[@]} > ${#V2[@]} ? ${#V1[@]} : ${#V2[@]}))
-  
+  local -i num1 num2
   for ((i=0; i<max_len; i+=1)); do
-    local -i num1="${V1[i]:-0}"
-    local -i num2="${V2[i]:-0}"
+    num1="${V1[i]:-0}"
+    num2="${V2[i]:-0}"
     
     if ((num1 > num2)); then
       return 1
@@ -998,7 +998,7 @@ cmd_update() {
     esac
 
     # Security check: refuse to update if script path is a symlink
-    [[ -L "$SCRIPT_PATH" ]] && die 1 "Cannot update: $SCRIPT_PATH is a symlink"
+    [[ ! -L "$SCRIPT_PATH" ]] || die 1 "Cannot update: $SCRIPT_PATH is a symlink"
 
     # Handle update based on permissions
     if ((needs_sudo)); then
