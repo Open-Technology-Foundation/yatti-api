@@ -28,8 +28,9 @@ teardown() {
 }
 
 @test "docs user raw format works" {
-  set_mock_curl_response "# YaTTi User Guide" "200"
+  set_mock_curl_response "$(jq -c '.docs.user' "$FIXTURES_FILE")" "200"
   run ./yatti-api docs user raw
+  # Raw format pipes through jq to extract .data.content
   [[ "$status" -eq 0 ]]
 }
 

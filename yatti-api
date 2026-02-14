@@ -10,12 +10,12 @@ declare -r SCRIPT_PATH=$(realpath -- "$0")
 declare -r SCRIPT_NAME=${SCRIPT_PATH##*/}
 
 # Configuration constants
-declare -r API_BASE="${YATTI_API_BASE:-https://yatti.id/v1}"
+declare -r API_BASE=${YATTI_API_BASE:-https://yatti.id/v1}
 # Validate API_BASE if overridden (security: prevent endpoint hijacking)
 # Skip validation in test mode (YATTI_TEST_MODE=1)
 if [[ -n "${YATTI_API_BASE:-}" ]] && [[ "${YATTI_TEST_MODE:-0}" != "1" ]]; then
   [[ "$YATTI_API_BASE" =~ ^https://yatti\.id(/|$) ]] || {
-    echo "Error: YATTI_API_BASE must be https://yatti.id" >&2
+    >&2 echo 'Error: YATTI_API_BASE must be https://yatti.id'
     exit 1
   }
 fi
@@ -70,14 +70,14 @@ noarg() {
 
 # Debug print variable declaration
 decp() {
-  local -- var="${1:-VERBOSE}"
+  local -- var=${1:-VERBOSE}
   declare -p "$var" 2>/dev/null | sed 's/^declare //' || echo 'undefined'
 }
 
 # Trim whitespace
 trim() {
   local v="$*"
-  v="${v#"${v%%[![:blank:]]*}"}"
+  v=${v#"${v%%[![:blank:]]*}"}
   echo -n "${v%"${v##*[![:blank:]]}"}"
 }
 
@@ -100,7 +100,7 @@ validate_path_segment() {
   [[ -n "$segment" ]] || die 2 "$name is required"
   if [[ ! "$segment" =~ ^[a-zA-Z0-9._-]+$ ]]; then
     die 22 "Invalid $name: contains disallowed characters" \
-      "Allowed: letters, numbers, dots, dashes, underscores"
+      'Allowed: letters, numbers, dots, dashes, underscores'
   fi
 }
 
@@ -264,7 +264,7 @@ cmd_configure() {
 
 # Command: status
 cmd_status() {
-  local -- subcommand="${1:-}"
+  local -- subcommand=${1:-}
   
   case "$subcommand" in
     health)
@@ -281,37 +281,37 @@ cmd_status() {
 
 # Command: users
 cmd_users() {
-  local -- subcommand="${1:-list}" user_id json_data
+  local -- subcommand=${1:-list} user_id json_data
   
   case "$subcommand" in
     list)
       api_request GET '/users' | format_json
       ;;
     get)
-      user_id="${2:-}"
+      user_id=${2:-}
       [[ -n "$user_id" ]] || die 2 'User ID required'
-      validate_path_segment "$user_id" "user ID"
+      validate_path_segment "$user_id" 'user ID'
       api_request GET /users/"$user_id" | format_json
       ;;
     create)
-      json_data="${2:-}"
+      json_data=${2:-}
       [[ -n "$json_data" ]] || die 2 'User data required (JSON format)'
       jq empty <<< "$json_data" 2>/dev/null || die 22 'Invalid JSON format'
       api_request POST /users -d "$json_data" | format_json
       ;;
     update)
-      user_id="${2:-}"
-      json_data="${3:-}"
+      user_id=${2:-}
+      json_data=${3:-}
       [[ -n "$user_id" ]] || die 2 'User ID required'
       [[ -n "$json_data" ]] || die 2 'User data required'
-      validate_path_segment "$user_id" "user ID"
+      validate_path_segment "$user_id" 'user ID'
       jq empty <<< "$json_data" 2>/dev/null || die 22 'Invalid JSON format'
       api_request PUT /users/"$user_id" -d "$json_data" | format_json
       ;;
     delete)
-      user_id="${2:-}"
+      user_id=${2:-}
       [[ -n "$user_id" ]] || die 2 'User ID required'
-      validate_path_segment "$user_id" "user ID"
+      validate_path_segment "$user_id" 'user ID'
       api_request DELETE /users/"$user_id" | format_json
       ;;
     *)
@@ -332,8 +332,8 @@ cmd_knowledgebases() {
     -*)         die 22 "Unknown option ${1@Q}" ;;
     *)          pos_args+=("$1") ;;
   esac; shift; done
-  subcommand="${pos_args[0]:-list}"
-  kb_name="${pos_args[1]:-}"
+  subcommand=${pos_args[0]:-list}
+  kb_name=${pos_args[1]:-}
 
   case "$subcommand" in
     list)
@@ -342,7 +342,7 @@ cmd_knowledgebases() {
         # Fetch KB list and display with long descriptions from API
         api_request GET /knowledgebases | jq -r '.data.knowledgebases[].name' 2>/dev/null | while IFS= read -r kb_name; do
           long_desc=$(api_request GET /knowledgebases/"$kb_name" 2>/dev/null | jq -r '.data.long_description // empty')
-          [[ -n "$long_desc" ]] || long_desc="No long description available"
+          [[ -n "$long_desc" ]] || long_desc='No long description available'
           printf '\n\033[1;36m%s\033[0m\n%s\n' "$kb_name" "$long_desc"
         done
       else
@@ -351,7 +351,7 @@ cmd_knowledgebases() {
       ;;
     get)
       [[ -n "$kb_name" ]] || die 2 'Knowledgebase name required'
-      validate_path_segment "$kb_name" "knowledgebase name"
+      validate_path_segment "$kb_name" 'knowledgebase name'
       # API now returns long_description directly
       api_request GET /knowledgebases/"$kb_name" | format_json
       ;;
@@ -405,7 +405,7 @@ cmd_query() {
     --timeout)
       noarg "$@"; shift; timeout=$1 ;;
     -h|--help)
-      cat <<EOT
+      cat <<QUERY
 Usage: $SCRIPT_NAME query [options]
 
 Options:
@@ -426,12 +426,13 @@ Options:
                              Use higher values for large knowledgebases like jakartapost
 
 Available models: All latest LLMs from OpenAI, Anthropic, and Google
-EOT
+QUERY
         return 0
         ;;
-    -[KqQktmscMpfh]*)
-       #shellcheck disable=SC2046    # Handle combined short options
-       set -- '' $(printf -- '-%c ' $(grep -o . <<<"${1:1}")) "${@:2}" ;;
+
+    -[KqQktmscMpfh]?*) # Bundled short options
+      set -- "${1:0:2}" "-${1:2}" "${@:2}"; continue ;;
+
     -*)
       die 22 "Invalid option ${1@Q}" ;;
     *)
@@ -453,7 +454,7 @@ EOT
     # Read from file
     [[ -f "$query_file" ]] || die 2 "Query file not found: ${query_file@Q}"
     # Security: warn about symlinks (could point to sensitive files)
-    [[ ! -L "$query_file" ]] || warn "Query file is a symlink - ensure target is intended"
+    [[ ! -L "$query_file" ]] || warn 'Query file is a symlink - ensure target is intended'
     query_text=$(cat "$query_file")
     info "Read query from file (${#query_text} characters)"
   elif [[ "$query_text" == "-" ]]; then
@@ -524,7 +525,7 @@ EOT
   info "Querying $kb_name..."
   # Make query request
   local -- response
-  if response=$(api_request POST "/query" -d "$json_payload"); then
+  if response=$(api_request POST /query -d "$json_payload"); then
     # Parse and display response
     if [[ "${OUTPUT_FORMAT:-pretty}" == json ]]; then
       echo "$response" | format_json
@@ -541,7 +542,7 @@ EOT
       
       [[ -z "$query_id" ]] || info "Query ID: $query_id"
 
-      ((!cached)) || info "(Cached response)"
+      ((!cached)) || info '(Cached response)'
       
       # Check if this is a context-only query
       if ((context_only)); then
@@ -566,11 +567,12 @@ EOT
 
 # Command: history
 cmd_history() {
-  local -- limit="${1:-20}" kb_filter="${2:-}"
+  local -- limit=${1:-20}
+  local -- kb_filter=${2:-}
 
   # Validate query parameters
-  validate_query_param "$limit" "limit" "integer"
-  [[ -z "$kb_filter" ]] || validate_path_segment "$kb_filter" "knowledgebase filter"
+  validate_query_param "$limit" limit integer
+  [[ -z "$kb_filter" ]] || validate_path_segment "$kb_filter" 'knowledgebase filter'
 
   local -- params="?limit=$limit"
   [[ -z "$kb_filter" ]] || params="${params}&knowledgebase=$kb_filter"
@@ -581,23 +583,23 @@ cmd_history() {
 
 # Command: get query
 cmd_get_query() {
-  local -- query_id="${1:-}"
+  local -- query_id=${1:-}
   [[ -n "$query_id" ]] || die 2 'Query ID required'
-  validate_path_segment "$query_id" "query ID"
+  validate_path_segment "$query_id" 'query ID'
 
   api_request GET /query/"$query_id" | format_json
 }
 
 # Command: docs
 cmd_docs() {
-  local -- doc_type="${1:-user}"
-  local -- format="${2:-}"
+  local -- doc_type=${1:-user}
+  local -- format=${2:-}
 
   case "$doc_type" in
     user|'')
       info 'Fetching user documentation...'
-      if [[ "$format" == "raw" ]]; then
-        curl -sf "$API_BASE"/docs/raw
+      if [[ "$format" == raw ]]; then
+        api_request GET /docs | jq -r '.data.content // .' 2>/dev/null
       elif [[ "$format" == html ]]; then
         info 'Opening documentation in browser...'
         if command -v xdg-open &> /dev/null; then
@@ -631,17 +633,17 @@ cmd_docs() {
       ;;
 
     list)
-      info "Available documentation:"
-      echo "  user       - User guide for using the API (default)"
-      echo "  api        - Technical API documentation"
-      echo "  technical  - Developer README and implementation details"
+      info 'Available documentation:'
+      echo '  user       - User guide for using the API (default)'
+      echo '  api        - Technical API documentation'
+      echo '  technical  - Developer README and implementation details'
       echo
-      echo "Formats:"
-      echo "  (default)  - JSON formatted output"
-      echo "  raw        - Plain markdown text"
-      echo "  html       - Open in web browser (user docs only)"
+      echo 'Formats:'
+      echo '  (default)  - JSON formatted output'
+      echo '  raw        - Plain markdown text'
+      echo '  html       - Open in web browser (user docs only)'
       echo
-      echo "Examples:"
+      echo 'Examples:'
       echo "  $SCRIPT_NAME docs                    # User guide in JSON"
       echo "  $SCRIPT_NAME docs user raw           # User guide as markdown"
       echo "  $SCRIPT_NAME docs api                # API docs in JSON"
@@ -652,16 +654,16 @@ cmd_docs() {
     -h|--help|help)
       echo "Usage: $SCRIPT_NAME docs [type] [format]"
       echo
-      echo "Types:"
-      echo "  user       - User guide (default)"
-      echo "  api        - API technical documentation"
-      echo "  technical  - Developer documentation"
-      echo "  list       - List available documentation"
+      echo 'Types:'
+      echo '  user       - User guide (default)'
+      echo '  api        - API technical documentation'
+      echo '  technical  - Developer documentation'
+      echo '  list       - List available documentation'
       echo
-      echo "Formats:"
-      echo "  (default)  - JSON formatted"
-      echo "  raw        - Plain markdown"
-      echo "  html       - Open in browser (user docs only)"
+      echo 'Formats:'
+      echo '  (default)  - JSON formatted'
+      echo '  raw        - Plain markdown'
+      echo '  html       - Open in browser (user docs only)'
       ;;
 
     *)
@@ -742,8 +744,8 @@ version_compare() {
   local -i max_len=$((${#V1[@]} > ${#V2[@]} ? ${#V1[@]} : ${#V2[@]}))
   local -i num1 num2
   for ((i=0; i<max_len; i+=1)); do
-    num1="${V1[i]:-0}"
-    num2="${V2[i]:-0}"
+    num1=${V1[i]:-0}
+    num2=${V2[i]:-0}
     
     if ((num1 > num2)); then
       return 1
@@ -758,7 +760,7 @@ version_compare() {
 # GPG signature verification for updates
 # Returns: 0=verified, 1=unavailable (proceed with warning), 2=failed (abort)
 import_update_pubkey() {
-  local -- pubkey_cache="${CONFIG_DIR}/pubkey.asc"
+  local -- pubkey_cache="$CONFIG_DIR"/pubkey.asc
   local -- imported_fp
 
   # Verify fingerprint of cached/imported key matches pinned fingerprint
@@ -767,7 +769,7 @@ import_update_pubkey() {
     imported_fp=$(gpg --batch --with-colons --fingerprint 2>/dev/null \
       | grep -A1 'pub:' | grep '^fpr:' | head -1 | cut -d: -f10)
     # Normalize pinned fingerprint (remove spaces)
-    local -- pinned_fp="${GPG_KEY_FINGERPRINT// /}"
+    local -- pinned_fp=${GPG_KEY_FINGERPRINT// /}
     [[ "$imported_fp" == "$pinned_fp" ]]
   }
 
@@ -786,7 +788,7 @@ import_update_pubkey() {
   fi
 
   # Download public key from API
-  if curl -sfL "${API_BASE}/client/pubkey" -o "$pubkey_cache" 2>/dev/null; then
+  if curl -sfL "$API_BASE"/client/pubkey -o "$pubkey_cache" 2>/dev/null; then
     # Verify it's a valid GPG key format
     if grep -q 'BEGIN PGP PUBLIC KEY' "$pubkey_cache" 2>/dev/null; then
       gpg --batch --import "$pubkey_cache" 2>/dev/null
@@ -808,7 +810,7 @@ import_update_pubkey() {
 
 verify_update_signature() {
   local -- script_file=$1
-  local -- sig_file="${script_file}.sig"
+  local -- sig_file="$script_file".sig
 
   # Check gpg is available
   if ! command -v gpg &>/dev/null; then
@@ -817,7 +819,7 @@ verify_update_signature() {
   fi
 
   # Download signature (soft fail if not available)
-  if ! curl -sfL "${API_BASE}/client/download.sig" -o "$sig_file" 2>/dev/null; then
+  if ! curl -sfL "$API_BASE"/client/download.sig -o "$sig_file" 2>/dev/null; then
     rm -f "$sig_file"
     return 1  # Signature not available from server
   fi
@@ -868,7 +870,7 @@ cmd_update() {
   script_dir=$(dirname -- "$SCRIPT_PATH")
   local -i will_need_sudo=0
 
-  if [[ "$script_dir" == '/usr/local/bin' ]] || [[ "$script_dir" == "/usr/bin" ]] || [[ "$script_dir" == "/opt"* ]]; then
+  if [[ "$script_dir" == /usr/local/bin ]] || [[ "$script_dir" == /usr/bin ]] || [[ "$script_dir" == "/opt"* ]]; then
     if [[ ! -w "$SCRIPT_PATH" ]] && ((EUID)); then
       will_need_sudo=1
     fi
@@ -886,12 +888,12 @@ cmd_update() {
       -h|--help)
         echo "Usage: $SCRIPT_NAME update [options]"
         echo
-        echo "Options:"
-        echo "  --check    Check for updates without installing"
-        echo "  --force    Force update even if version is current"
-        echo "  --help     Show this help message"
+        echo 'Options:'
+        echo '  --check    Check for updates without installing'
+        echo '  --force    Force update even if version is current'
+        echo '  --help     Show this help message'
         echo
-        echo "Note: If installed system-wide, you may need to run with sudo"
+        echo 'Note: If installed system-wide, you may need to run with sudo'
         return 0
         ;;
       *)
@@ -925,7 +927,7 @@ cmd_update() {
     if ((update_available)); then
       info "Update available: $VERSION → v$latest_version"
       echo
-      echo "Changelog:"
+      echo 'Changelog:'
       echo "$version_response" | jq -r '.data.changelog | to_entries[] | "  v\(.key):",.value.changes[]' 2>/dev/null
       echo
       echo "Run '$SCRIPT_NAME update' to install the update"
@@ -957,16 +959,16 @@ cmd_update() {
     # Check if we need sudo for system-wide installation
     # (reuse script_dir from earlier check)
     local -i needs_sudo=0
-    if [[ "$script_dir" == '/usr/local/bin' ]] || [[ "$script_dir" == '/usr/bin' ]] || [[ "$script_dir" == "/opt"* ]]; then
+    if [[ "$script_dir" == /usr/local/bin ]] || [[ "$script_dir" == /usr/bin ]] || [[ "$script_dir" == "/opt"* ]]; then
       # Check if we have write permission
       [[ -w "$SCRIPT_PATH" ]] || needs_sudo=1
     fi
     
     # Download new version to temp file (mktemp creates with 600 permissions)
-    temp_file=$(mktemp "${TMPDIR:-/tmp}/yatti-api.XXXXXX")
+    temp_file=$(mktemp "${TMPDIR:-/tmp}"/yatti-api.XXXXXX)
 
     info 'Downloading new version...'
-    if ! curl -sfL "${API_BASE}/client/download" -o "$temp_file"; then
+    if ! curl -sfL "$API_BASE"/client/download -o "$temp_file"; then
       rm -f "$temp_file"
       die 1 'Failed to download update'
     fi
@@ -1006,7 +1008,7 @@ cmd_update() {
       info 'System-wide installation detected. Using sudo for update...'
 
       # Make backup with sudo
-      local -- backup_file="${SCRIPT_PATH}.backup"
+      local -- backup_file="$SCRIPT_PATH".backup
       if sudo cp "$SCRIPT_PATH" "$backup_file" 2>/dev/null; then
         info "Backup saved to $backup_file"
       fi
@@ -1041,7 +1043,7 @@ cmd_update() {
     fi
     
     # Make backup of current script
-    local -- backup_file="${SCRIPT_PATH}.backup"
+    local -- backup_file="$SCRIPT_PATH".backup
     if cp "$SCRIPT_PATH" "$backup_file" 2>/dev/null; then
       info "Backup saved to $backup_file"
     fi
@@ -1068,7 +1070,7 @@ cmd_update() {
 # --------------------------------------------------------------------------------
 
 main() {
-  local -- command="${1:-help}"
+  local -- command=${1:-help}
   shift || true
 
   # Ensure config directory exists
