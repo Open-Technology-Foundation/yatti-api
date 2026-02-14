@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Install git hooks for yatti-api development
 #
 # Usage: ./scripts/install-hooks.sh
@@ -55,7 +55,7 @@ for hook in "$HOOKS_SRC"/*; do
         cp "$hook" "$dst"
         chmod 755 "$dst"
         info "$hook_name (updated)"
-        ((++installed))
+        installed+=1
       else
         warn "$hook_name (skipped)"
       fi

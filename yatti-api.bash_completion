@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2207
 # SC2207: Word splitting in compgen is intentional for bash completion.
 # This is the standard pattern for COMPREPLY array population in bash_completion.

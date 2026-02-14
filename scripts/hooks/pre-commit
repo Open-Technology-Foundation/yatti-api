@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # shellcheck disable=SC2250
 # Pre-commit hook: runs shellcheck on staged bash files
 #
@@ -44,7 +44,7 @@ declare -i errors=0
 for file in "${staged_files[@]}"; do
   if [[ -f "$file" ]]; then
     if ! shellcheck -x "$file"; then
-      ((++errors))
+      errors+=1
     fi
   fi
 done

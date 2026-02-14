@@ -27,8 +27,9 @@
 
 # Increment call counter if tracking file is set
 if [[ -n "${MOCK_CURL_CALL_COUNT:-}" ]]; then
+  declare -i count
   count=$(cat "$MOCK_CURL_CALL_COUNT" 2>/dev/null || echo 0)
-  ((count++)) || true  # Avoid set -e issue with increment from 0
+  count+=1
   echo "$count" > "$MOCK_CURL_CALL_COUNT"
 
   # If we have a responses file, use line N for call N
