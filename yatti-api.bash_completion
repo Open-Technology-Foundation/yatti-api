@@ -3,7 +3,7 @@
 # SC2207: Word splitting in compgen is intentional for bash completion.
 # This is the standard pattern for COMPREPLY array population in bash_completion.
 #
-# Bash completion for yatti-api v1.4.2
+# Bash completion for yatti-api v1.4.3
 #
 # Installation:
 #   1. Source this file in your .bashrc or .bash_profile:
@@ -18,15 +18,15 @@ _yatti_api_completions() {
   local cur prev words cword
   _init_completion || return
 
-  local commands="configure status users knowledgebases kb query history get-query docs doc documentation update help version"
+  local commands="configure status users knowledgebases kb query history get-query docs doc documentation update help version -h --help -V --version"
   local status_subcommands="health info"
   local users_subcommands="list get create update delete"
   local kb_subcommands="list get sync"
-  local docs_subcommands="user api technical list help"
+  local docs_subcommands="user api technical dev developer list help"
   local update_options="--check --force --help"
 
   # Available models for query command
-  local models="gpt-5.1 claude-haiku-4-5 claude-opus-4-1 claude-sonnet-4-5 gemini-pro gemini-ultra"
+  local models="claude-sonnet-4-6 claude-opus-4-6 claude-opus-4-5 claude-sonnet-4-5 claude-haiku-4-5 gpt-4o gpt-4.1 gemini-2.5-pro gemini-2.5-flash"
 
   # Available knowledge bases (common ones)
   local common_kbs="appliedanthropology seculardharma okusiassociates wayang.net peraturan.go.id jakartapost prosocial.world garydean okusimail okusiresearch ollama uv"
@@ -172,6 +172,17 @@ _yatti_api_completions() {
           COMPREPLY=($(compgen -W "0 3600 86400 604800" -- "$cur"))
           return 0
           ;;
+
+        --timeout)
+          COMPREPLY=($(compgen -W "60 120 300 600" -- "$cur"))
+          return 0
+          ;;
+
+        -Q|--query-file)
+          # File path completion
+          COMPREPLY=($(compgen -f -- "$cur"))
+          return 0
+          ;;
       esac
 
       # Complete options if current word starts with -
@@ -179,7 +190,8 @@ _yatti_api_completions() {
         local query_opts="-K --knowledgebase -q --query -k --top-k -t --temperature"
         query_opts="$query_opts -m --model -s --context-scope -f --force-refresh"
         query_opts="$query_opts -c --context --context-only -M --max-tokens"
-        query_opts="$query_opts -p --prompt-template --cache-ttl -h --help"
+        query_opts="$query_opts -p --prompt-template --cache-ttl --timeout"
+        query_opts="$query_opts -Q --query-file -h --help"
         COMPREPLY=($(compgen -W "$query_opts" -- "$cur"))
         return 0
       fi
@@ -248,11 +260,14 @@ _yatti_api_completions() {
       if [[ $cword -eq 2 ]]; then
         COMPREPLY=($(compgen -W "$docs_subcommands" -- "$cur"))
       elif [[ $cword -eq 3 ]]; then
-        # Format options for docs
+        # Format options for docs (html only works for user type)
         local prev_word="${words[2]}"
         case "$prev_word" in
-          user|api|technical)
+          user)
             COMPREPLY=($(compgen -W "raw html" -- "$cur"))
+            ;;
+          api|technical|dev|developer)
+            COMPREPLY=($(compgen -W "raw" -- "$cur"))
             ;;
         esac
       fi
@@ -266,7 +281,7 @@ _yatti_api_completions() {
       return 0
       ;;
 
-    help|version)
+    help|-h|--help|version|-V|--version)
       # No additional completions
       return 0
       ;;

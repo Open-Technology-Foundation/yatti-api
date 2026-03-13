@@ -2,6 +2,10 @@
 # YaTTI API Client - A command-line interface for the YaTTi REST API
 set -euo pipefail
 shopt -s inherit_errexit shift_verbose extglob nullglob
+if [[ "${YATTI_TEST_MODE:-0}" != "1" ]]; then
+  export PATH=/usr/local/bin:/usr/bin:/bin
+fi
+command -v curl >/dev/null || { >&2 echo "Error: curl required (apt install curl)"; exit 18; }
 
 # Script metadata
 declare -r VERSION='1.4.3'
@@ -34,10 +38,10 @@ declare -ri CURL_MAX_TIME=${YATTI_TIMEOUT:-60}
 # Global variables
 declare -i VERBOSE=${VERBOSE:-0} PROMPT=1
 # Colour definitions
-if [[ -t 2 ]]; then
-  declare -r RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' NC=$'\033[0m'
+if [[ -t 1 && -t 2 ]]; then
+  declare -r RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' BOLD_CYAN=$'\033[1;36m' NC=$'\033[0m'
 else
-  declare -r RED='' GREEN='' YELLOW='' CYAN='' NC=''
+  declare -r RED='' GREEN='' YELLOW='' CYAN='' BOLD_CYAN='' NC=''
 fi
 # Core message function using FUNCNAME for context
 _msg() {
@@ -55,7 +59,7 @@ _msg() {
 # Conditional output based on verbosity
 vecho() { ((VERBOSE)) || return 0; _msg "$@"; }
 success() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
-warn() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
+warn() { >&2 _msg "$@"; }
 info() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
 # Unconditional output
 error() { >&2 _msg "$@"; }
@@ -67,22 +71,6 @@ noarg() {
     die 2 "Missing argument for option ${1@Q}"
   fi
 }
-
-# Debug print variable declaration
-decp() {
-  local -- var=${1:-VERBOSE}
-  declare -p "$var" 2>/dev/null | sed 's/^declare //' || echo 'undefined'
-}
-
-# Trim whitespace
-trim() {
-  local v="$*"
-  v=${v#"${v%%[![:blank:]]*}"}
-  echo -n "${v%"${v##*[![:blank:]]}"}"
-}
-
-# Pluralization helper
-s() { ((${1:-0} == 1)) && echo '' || echo 's'; }
 
 # Yes/no prompt (60s timeout, defaults to 'no' on timeout)
 yn() {
@@ -140,7 +128,7 @@ save_api_key() {
   mkdir -p -m 700 "$CONFIG_DIR"
   # Atomic creation with correct permissions to prevent race condition
   install -m 600 /dev/null "$API_KEY_FILE"
-  echo "$api_key" > "$API_KEY_FILE"
+  echo "$api_key" > "$API_KEY_FILE" || die 5 "Failed to write API key to ${API_KEY_FILE@Q}"
   success "API key saved to ${API_KEY_FILE@Q}"
 }
 
@@ -148,7 +136,7 @@ save_api_key() {
 is_retryable_error() {
   local -i http_code=$1
   # Retry on: rate limit (429), server errors (5xx)
-  [[ $http_code -eq 429 ]] || ((http_code >= 500))
+  ((http_code == 429)) || ((http_code >= 500))
 }
 
 # Make API request with retry logic
@@ -200,7 +188,7 @@ api_request() {
     http_code=$(tail -1 <<< "$response" | sed 's/__HTTP_CODE__//')
     response=$(sed '$d' <<< "$response")
 
-    if [[ "$http_code" -ge 200 ]] && [[ "$http_code" -lt 300 ]]; then
+    if ((http_code >= 200 && http_code < 300)); then
       echo "$response"
       return 0
     elif is_retryable_error "$http_code" && ((attempt < MAX_RETRIES)); then
@@ -210,7 +198,7 @@ api_request() {
       continue
     else
       # Non-retryable error or max retries exceeded
-      if ((VERBOSE)) || [[ "$http_code" -ge 400 ]]; then
+      if ((VERBOSE)) || ((http_code >= 400)); then
         error "HTTP $http_code"
         [[ -n "$response" ]] && jq -r '.error.message // .message // .' <<< "$response" 2>/dev/null >&2 || echo "$response" >&2
       fi
@@ -266,7 +254,7 @@ cmd_configure() {
 cmd_status() {
   local -- subcommand=${1:-}
   
-  case "$subcommand" in
+  case $subcommand in
     health)
       api_request GET /status/health | format_json
       ;;
@@ -283,7 +271,7 @@ cmd_status() {
 cmd_users() {
   local -- subcommand=${1:-list} user_id json_data
   
-  case "$subcommand" in
+  case $subcommand in
     list)
       api_request GET '/users' | format_json
       ;;
@@ -335,16 +323,16 @@ cmd_knowledgebases() {
   subcommand=${pos_args[0]:-list}
   kb_name=${pos_args[1]:-}
 
-  case "$subcommand" in
+  case $subcommand in
     list)
       info 'Available Knowledgebases:'
       if ((show_long)); then
         # Fetch KB list and display with long descriptions from API
-        api_request GET /knowledgebases | jq -r '.data.knowledgebases[].name' 2>/dev/null | while IFS= read -r kb_name; do
+        while IFS= read -r kb_name; do
           long_desc=$(api_request GET /knowledgebases/"$kb_name" 2>/dev/null | jq -r '.data.long_description // empty')
           [[ -n "$long_desc" ]] || long_desc='No long description available'
-          printf '\n\033[1;36m%s\033[0m\n%s\n' "$kb_name" "$long_desc"
-        done
+          printf '\n%s%s%s\n%s\n' "$BOLD_CYAN" "$kb_name" "$NC" "$long_desc"
+        done < <(api_request GET /knowledgebases | jq -r '.data.knowledgebases[].name' 2>/dev/null)
       else
         api_request GET /knowledgebases | jq -r '.data.knowledgebases[] | "\(.name) - \(.description // "No description")"' 2>/dev/null || api_request GET /knowledgebases | format_json
       fi
@@ -367,7 +355,7 @@ cmd_knowledgebases() {
 
 # Command: query
 cmd_query() {
-  local -- kb_name='' query_text='' query_file='' temperature='0.0' model='claude-sonnet-4-5'
+  local -- kb_name='' query_text='' query_file='' temperature='0.0' model='claude-sonnet-4-6'
   local -i force_refresh=0 context_only=0
   local -i cache_ttl=86400
   local -- max_tokens='' prompt_template=''
@@ -455,7 +443,7 @@ QUERY
     [[ -f "$query_file" ]] || die 2 "Query file not found: ${query_file@Q}"
     # Security: warn about symlinks (could point to sensitive files)
     [[ ! -L "$query_file" ]] || warn 'Query file is a symlink - ensure target is intended'
-    query_text=$(cat "$query_file")
+    query_text=$(< "$query_file")
     info "Read query from file (${#query_text} characters)"
   elif [[ "$query_text" == "-" ]]; then
     # Read from stdin explicitly
@@ -595,7 +583,7 @@ cmd_docs() {
   local -- doc_type=${1:-user}
   local -- format=${2:-}
 
-  case "$doc_type" in
+  case $doc_type in
     user|'')
       info 'Fetching user documentation...'
       if [[ "$format" == raw ]]; then
@@ -687,7 +675,7 @@ Commands:
   query [options]              Execute a RAG query
   history [limit] [kb]         View query history
   get-query <id>               Get specific query result
-  docs [type] [format]         View API documentation
+  docs [type] [format]         View API documentation (aliases: doc, documentation)
   update [--check|--force]     Check for updates or update the client
   help                         Show this help message
   version                      Show version information
@@ -702,7 +690,7 @@ Query Examples:
 Environment Variables:
   YATTI_API_KEY               API key (alternative to config file)
   YATTI_API_BASE              API base URL (default: $API_BASE)
-  YATTI_MAX_RETRIES           Max retry attempts (default: 3, 0 to disable)
+  YATTI_MAX_RETRIES           Max retry attempts (default: 3, 1 to disable retries)
   YATTI_TIMEOUT               Request timeout in seconds (default: 60)
   YATTI_CONNECT_TIMEOUT       Connection timeout in seconds (default: 10)
   VERBOSE                     Set to 1 for verbose output
@@ -735,14 +723,15 @@ version_compare() {
   # Returns: 0 if equal, 1 if $1 > $2, 2 if $1 < $2
   local -- v1=$1
   local -- v2=$2
-  
+  local -a V1=() V2=()
+
   # Split versions into arrays
   IFS='.' read -ra V1 <<< "$v1"
   IFS='.' read -ra V2 <<< "$v2"
   
   # Pad arrays to same length
   local -i max_len=$((${#V1[@]} > ${#V2[@]} ? ${#V1[@]} : ${#V2[@]}))
-  local -i num1 num2
+  local -i num1 num2 i
   for ((i=0; i<max_len; i+=1)); do
     num1=${V1[i]:-0}
     num2=${V2[i]:-0}
@@ -859,6 +848,7 @@ cmd_update() {
   # Cleanup function for temporary files
   # Note: Use ${temp_file:-} to handle case where local var is out of scope
   cleanup_temp_file() {
+    trap - EXIT INT TERM
     if [[ -n "${temp_file:-}" && -f "${temp_file:-}" ]]; then
       rm -f "$temp_file"
     fi
@@ -867,7 +857,7 @@ cmd_update() {
 
   # Check if this is a system-wide installation that will need sudo
   local -- script_dir
-  script_dir=$(dirname -- "$SCRIPT_PATH")
+  script_dir=${SCRIPT_PATH%/*}
   local -i will_need_sudo=0
 
   if [[ "$script_dir" == /usr/local/bin ]] || [[ "$script_dir" == /usr/bin ]] || [[ "$script_dir" == "/opt"* ]]; then
@@ -1027,14 +1017,14 @@ cmd_update() {
         error "This may require running: sudo $SCRIPT_NAME update"
 
         # If not already running with sudo, suggest it
-        if [[ "$EUID" -ne 0 ]]; then
-          echo
-          echo 'Alternatively, you can:'
-          echo "1. Run with sudo: sudo $SCRIPT_NAME update"
-          echo '2. Install in user directory:'
-          echo '   mkdir -p ~/bin'
-          echo "   cp $temp_file ~/bin/$SCRIPT_NAME && chmod 755 ~/bin/$SCRIPT_NAME"
-          echo "   export PATH=\"\$HOME/bin:\$PATH\""
+        if ((EUID != 0)); then
+          >&2 echo
+          >&2 echo 'Alternatively, you can:'
+          >&2 echo "1. Run with sudo: sudo $SCRIPT_NAME update"
+          >&2 echo '2. Install in user directory:'
+          >&2 echo '   mkdir -p ~/bin'
+          >&2 echo "   cp $temp_file ~/bin/$SCRIPT_NAME && chmod 755 ~/bin/$SCRIPT_NAME"
+          >&2 echo "   export PATH=\"\$HOME/bin:\$PATH\""
         fi
         rm -f "$temp_file"
         die 1 'Update failed'
@@ -1077,7 +1067,7 @@ main() {
   #shellcheck disable=SC2174  # -m only applies to deepest dir, which is intentional
   mkdir -p -m 700 "$CONFIG_DIR"
 
-  case "$command" in
+  case $command in
     configure)
       cmd_configure "$@"
       ;;

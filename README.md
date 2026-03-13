@@ -4,10 +4,11 @@
 
 ## Quick Start
 
-**1. Install** (one command):
+**1. Install:**
 ```bash
-curl -fsSL https://yatti.id/v1/install | bash
+curl -fsSL https://yatti.id/v1/client/install | bash
 ```
+Or from source: `git clone https://github.com/Open-Technology-Foundation/yatti-api.git && cd yatti-api && sudo make install`
 
 **2. Configure** your API key:
 ```bash
@@ -338,13 +339,22 @@ yatti-api query jakartapost -Q large_query.txt --timeout 300
 
 ### Linux / macOS
 
-**Option 1: One-liner install (recommended)**
+**Option 1: One-liner install**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Open-Technology-Foundation/yatti-api/main/install.sh | bash
+curl -fsSL https://yatti.id/v1/client/install | bash
 ```
 
-**Option 2: Manual install**
+**Option 2: From source**
+
+```bash
+git clone https://github.com/Open-Technology-Foundation/yatti-api.git
+cd yatti-api
+sudo make install
+make check
+```
+
+**Option 3: Direct download**
 
 ```bash
 sudo curl -o /usr/local/bin/yatti-api https://yatti.id/v1/client/download
@@ -401,13 +411,11 @@ sudo apt-get update && sudo apt-get install -y curl jq
 
 #### Step 4: Install yatti-api
 
-Use the one-liner install:
-
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Open-Technology-Foundation/yatti-api/main/install.sh | bash
+curl -fsSL https://yatti.id/v1/client/install | bash
 ```
 
-Or manual install:
+Or from source / direct download:
 
 ```bash
 sudo curl -o /usr/local/bin/yatti-api https://yatti.id/v1/client/download
@@ -480,7 +488,7 @@ yatti-api query -K <knowledgebase> -q - [OPTIONS]
 **Query Processing Options:**
 - `-k, --top-k NUM` - Number of context sources (default: 5)
 - `-t, --temperature NUM` - LLM temperature 0.0-2.0 (default: 0.0)
-- `-m, --model NAME` - LLM model (default: gpt-5.2)
+- `-m, --model NAME` - LLM model (default: claude-sonnet-4-6)
 - `-s, --context-scope NUM` - Context segments per result (default: 3)
 - `-c, --context-only` - Return only context without AI response
 - `-M, --max-tokens NUM` - Maximum response tokens
@@ -490,9 +498,9 @@ yatti-api query -K <knowledgebase> -q - [OPTIONS]
 - `--timeout SECONDS` - Query timeout in seconds (default: 60, max: 600)
 
 **Available Models:**
-- **OpenAI:** gpt-5.2 (default), and other GPT models
-- **Anthropic:** claude-haiku-4-5, claude-opus-4-1, claude-sonnet-4-5
-- **Google:** gemini-pro, gemini-ultra
+- **Anthropic:** claude-sonnet-4-6 (default), claude-opus-4-6, claude-opus-4-5, claude-sonnet-4-5, claude-haiku-4-5
+- **OpenAI:** gpt-4o, gpt-4.1, and other GPT models
+- **Google:** gemini-2.5-pro, gemini-2.5-flash
 
 ### Knowledgebase Commands
 
@@ -519,8 +527,10 @@ yatti-api docs                       # User guide (JSON)
 yatti-api docs user raw              # User guide (markdown)
 yatti-api docs user html             # Open in browser
 yatti-api docs api                   # API documentation
-yatti-api docs technical             # Developer docs
+yatti-api docs technical             # Developer docs (aliases: dev, developer)
 ```
+
+> Command aliases: `docs`, `doc`, `documentation` are interchangeable.
 
 ### Updates
 
@@ -559,7 +569,8 @@ export YATTI_API_KEY="your_api_key_here"
 export YATTI_API_KEY="your_key"
 
 # API base URL (default: https://yatti.id/v1)
-export YATTI_API_BASE="https://custom.yatti.id/v1"
+# Must match https://yatti.id (validated for security)
+export YATTI_API_BASE="https://yatti.id/v1"
 
 # Retry configuration
 export YATTI_MAX_RETRIES=3         # Max retry attempts (default: 3, set to 1 to disable)
@@ -649,8 +660,7 @@ cat long_query.txt | yatti-api query seculardharma -q -
 yatti-api                       # Main bash script (~1100 lines)
 yatti-api.1                     # Man page documentation
 yatti-api.bash_completion       # Bash completion
-CHANGELOG.md                    # Version history
-install.sh                      # One-line installer
+Makefile                        # Install, uninstall, test, lint
 scripts/                        # Development scripts
   ├── install-hooks.sh          # Install git hooks
   └── hooks/                    # Git hook templates
@@ -832,7 +842,14 @@ done
 
 ## Release Notes
 
-### v1.4.2 (Latest)
+### v1.4.3 (Latest)
+
+- **BCS compliance** fixes for medium-severity audit findings
+- Warn function now displays unconditionally (regardless of VERBOSE)
+- Arithmetic comparisons use `(( ))` consistently instead of `[[ ]]`
+- Various code quality improvements
+
+### v1.4.2
 
 - **`kb list --long`** flag to display full knowledgebase descriptions
 - **`kb get`** now includes `long_description` field in JSON output
@@ -851,7 +868,7 @@ done
 - **Security:** URL validation, GPG signature verification, path traversal prevention
 - **Masked API keys** in version output
 
-See [CHANGELOG.md](CHANGELOG.md) for full version history.
+Run `yatti-api update --check` to see available updates with changelog.
 
 ---
 
@@ -866,7 +883,7 @@ See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ## Version
 
-Current version: **1.4.2**
+Current version: **1.4.3**
 
 ```bash
 yatti-api update --check    # Check for updates

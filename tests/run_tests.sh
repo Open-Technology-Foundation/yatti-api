@@ -3,26 +3,44 @@
 # Runs BATS test suite with options for filtering, formatting, and reporting
 
 set -euo pipefail
+shopt -s inherit_errexit
 
-# Colors
-declare -r RED=$'\033[0;31m'
-declare -r GREEN=$'\033[0;32m'
-declare -r YELLOW=$'\033[0;33m'
-declare -r CYAN=$'\033[0;36m'
-declare -r NC=$'\033[0m'
-
-# Script directory
-#shellcheck disable=SC2155  # Combined declaration intentional for readonly paths
-declare -r SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Script metadata
 #shellcheck disable=SC2155
-declare -r PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+declare -r SCRIPT_DIR=$(realpath -- "$(dirname "${BASH_SOURCE[0]}")")
+declare -r PROJECT_ROOT=${SCRIPT_DIR%/*}
 
-# Test configuration
+# Global variables
 declare -i VERBOSE=0
 declare -i PARALLEL=0
-declare -- FORMAT="tap"
-declare -- FILTER=""
-declare -- TEST_SUITE="all"
+declare -- FORMAT='tap'
+declare -- FILTER=''
+declare -- TEST_SUITE='all'
+
+# Colors (TTY-conditional)
+if [[ -t 1 && -t 2 ]]; then
+  declare -r RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' NC=$'\033[0m'
+else
+  declare -r RED='' GREEN='' YELLOW='' CYAN='' NC=''
+fi
+
+# Messaging functions
+_msg() {
+  local -- prefix
+  case ${FUNCNAME[1]} in
+    info)    prefix="${CYAN}◉${NC}" ;;
+    success) prefix="${GREEN}✓${NC}" ;;
+    warn)    prefix="${YELLOW}▲${NC}" ;;
+    error)   prefix="${RED}✗${NC}" ;;
+    *)       prefix='◉' ;;
+  esac
+  >&2 printf '%s %s\n' "$prefix" "$*"
+}
+info()    { ((VERBOSE)) || return 0; _msg "$@"; }
+success() { ((VERBOSE)) || return 0; _msg "$@"; }
+warn()    { _msg "$@"; }
+error()   { _msg "$@"; }
+die()     { (($# < 2)) || error "${@:2}"; exit "${1:-1}"; }
 
 # Usage information
 usage() {
@@ -57,8 +75,8 @@ EOF
 
 # Parse command line arguments
 parse_args() {
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
+  while (($#)); do
+    case $1 in
       -v|--verbose)
         VERBOSE=1
         shift
@@ -80,7 +98,7 @@ parse_args() {
         exit 0
         ;;
       -*)
-        echo "Unknown option: $1" >&2
+        error "Unknown option: $1"
         usage >&2
         exit 1
         ;;
@@ -95,13 +113,11 @@ parse_args() {
 # Check dependencies
 check_dependencies() {
   if ! command -v bats >/dev/null 2>&1; then
-    echo "${RED}✗${NC} Error: BATS is not installed" >&2
-    echo "Install with: sudo apt-get install bats" >&2
-    exit 1
+    die 18 'BATS is not installed. Install with: sudo apt-get install bats'
   fi
 
   if ! command -v jq >/dev/null 2>&1; then
-    echo "${YELLOW}⚡${NC} Warning: jq is not installed - some tests may fail" >&2
+    warn 'jq is not installed - some tests may fail'
   fi
 }
 
@@ -110,7 +126,7 @@ find_test_files() {
   local -- suite="$1"
   local -a files=()
 
-  case "$suite" in
+  case $suite in
     all)
       mapfile -t files < <(find "$SCRIPT_DIR" -name "*.bats" | sort)
       ;;
@@ -129,8 +145,7 @@ find_test_files() {
       elif [[ -f "$SCRIPT_DIR/${suite}.bats" ]]; then
         files=("$SCRIPT_DIR/${suite}.bats")
       else
-        echo "${RED}✗${NC} Test file not found: $suite" >&2
-        exit 1
+        die 1 "Test file not found: $suite"
       fi
       ;;
   esac
@@ -144,18 +159,17 @@ run_tests() {
   mapfile -t test_files < <(find_test_files "$TEST_SUITE")
 
   if [[ ${#test_files[@]} -eq 0 ]]; then
-    echo "${YELLOW}⚡${NC} No test files found for suite: $TEST_SUITE" >&2
-    exit 1
+    die 1 "No test files found for suite: $TEST_SUITE"
   fi
 
-  echo "${CYAN}◉${NC} Running ${#test_files[@]} test file(s) from: $TEST_SUITE"
-  echo
+  >&2 echo "${CYAN}◉${NC} Running ${#test_files[@]} test file(s) from: $TEST_SUITE"
+  >&2 echo
 
   # Build BATS command
   local -a bats_args=()
 
   # Add format option
-  case "$FORMAT" in
+  case $FORMAT in
     tap)
       bats_args+=(--formatter tap)
       ;;
@@ -166,7 +180,7 @@ run_tests() {
       bats_args+=(--formatter junit)
       ;;
     *)
-      echo "${YELLOW}⚡${NC} Unknown format: $FORMAT, using tap" >&2
+      warn "Unknown format: $FORMAT, using tap"
       bats_args+=(--formatter tap)
       ;;
   esac
@@ -184,12 +198,12 @@ run_tests() {
   # Run tests
   local -i exit_code=0
   if bats "${bats_args[@]}" "${test_files[@]}"; then
-    echo
-    echo "${GREEN}✓${NC} All tests passed!"
+    >&2 echo
+    success 'All tests passed!'
     exit_code=0
   else
-    echo
-    echo "${RED}✗${NC} Some tests failed"
+    >&2 echo
+    error 'Some tests failed'
     exit_code=1
   fi
 
@@ -198,12 +212,12 @@ run_tests() {
 
 # Print test statistics
 print_statistics() {
-  echo
-  echo "${CYAN}◉${NC} Test Statistics:"
-  echo "  Test files: $(find "$SCRIPT_DIR" -name "*.bats" | wc -l)"
-  echo "  Unit tests: $(find "$SCRIPT_DIR/unit" -name "*.bats" 2>/dev/null | wc -l)"
-  echo "  Integration tests: $(find "$SCRIPT_DIR/integration" -name "*.bats" 2>/dev/null | wc -l)"
-  echo
+  >&2 echo
+  >&2 echo "${CYAN}◉${NC} Test Statistics:"
+  >&2 echo "  Test files: $(find "$SCRIPT_DIR" -name "*.bats" | wc -l)"
+  >&2 echo "  Unit tests: $(find "$SCRIPT_DIR/unit" -name "*.bats" 2>/dev/null | wc -l)"
+  >&2 echo "  Integration tests: $(find "$SCRIPT_DIR/integration" -name "*.bats" 2>/dev/null | wc -l)"
+  >&2 echo
 }
 
 # Main

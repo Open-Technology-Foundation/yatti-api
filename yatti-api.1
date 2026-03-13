@@ -1,4 +1,4 @@
-.TH YATTI-API 1 "2025-12-28" "yatti-api 1.4.2" "YaTTi API Client Manual"
+.TH YATTI-API 1 "2026-03-13" "yatti-api 1.4.3" "YaTTi API Client Manual"
 .SH NAME
 yatti-api \- RAG query client for specialized knowledgebases
 .SH SYNOPSIS
@@ -81,17 +81,17 @@ View query history. Optionally limit results and filter by knowledgebase.
 .BI get-query " query-id"
 Retrieve a specific query result by its ID.
 .TP
-.BR docs " [" user | api | technical "] [" raw | html "]"
+.BR docs " [" user | api | technical "] [" raw | html "]" " (aliases: " doc ", " documentation ")"
 Access API documentation. Categories:
 .RS
 .TP
 .B user
 User documentation (default).
 .TP
-.BR api ", " developer
+.B api
 API reference documentation.
 .TP
-.BR technical ", " dev
+.BR technical ", " dev ", " developer
 Technical implementation details.
 .PP
 Formats:
@@ -138,7 +138,7 @@ Number of document contexts to retrieve (default: 5).
 LLM temperature 0.0\-2.0 (default: 0.0). Higher values produce more creative responses.
 .TP
 .BI \-m ", " \-\-model " NAME"
-LLM model to use (default: gpt-5.2). Supports models from OpenAI, Anthropic, and Google.
+LLM model to use (default: claude-sonnet-4-6). Supports models from OpenAI, Anthropic, and Google.
 .TP
 .BI \-s ", " \-\-context-scope " NUM"
 Context segments per result (default: 3, typically 1\-10).
@@ -234,7 +234,7 @@ Query with custom parameters:
 .RS
 .nf
 $ yatti-api query -K okusiresearch -q "PMA company requirements" \\
-    --top-k 10 --temperature 0.5 --model claude-3.5-sonnet
+    --top-k 10 --temperature 0.5 --model claude-sonnet-4-6
 .fi
 .RE
 .PP

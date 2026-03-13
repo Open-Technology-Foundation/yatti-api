@@ -29,6 +29,10 @@ KB_INFO = {
         "short": "Indonesian news archives (1994-2005)",
         "long": "Search Jakarta Post archive for Indonesian politics, society, and historical events."
     },
+    "jawawa": {
+        "short": "Indonesian news archive (1994-2026)",
+        "long": "Search jawawa.id comprehensive news archive: 250K+ articles spanning Jakarta Post (1994-2017) and live aggregated news (2025-2026+) from Tempo, Antara, Detik, CNN Indonesia, CNA. Covers Indonesian politics, business, economics, and society."
+    },
     "peraturan": {
         "short": "Indonesian laws and regulations",
         "long": "Search Indonesian laws and regulations from peraturan.go.id for legal and compliance research."
@@ -213,6 +217,7 @@ async def yatti_query(
     - appliedanthropology: Applied anthropology research
     - seculardharma: Secular Buddhist philosophy
     - jakartapost: Indonesian news archives (1994-2005)
+    - jawawa: Indonesian news archive (1994-2026)
     - peraturan: Indonesian laws and regulations
     - okusiassociates: Indonesian business operations
     - prosocial: Social evolution research

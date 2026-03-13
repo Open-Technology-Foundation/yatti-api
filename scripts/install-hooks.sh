@@ -4,82 +4,102 @@
 # Usage: ./scripts/install-hooks.sh
 #
 set -euo pipefail
+shopt -s inherit_errexit
+export PATH=/usr/local/bin:/usr/bin:/bin
 
-# Colors
-readonly RED='\033[0;31m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[0;33m'
-readonly NC='\033[0m'
+# Script metadata
+#shellcheck disable=SC2155
+declare -r SCRIPT_DIR=$(realpath -- "$(dirname "${BASH_SOURCE[0]}")")
+declare -r REPO_ROOT=${SCRIPT_DIR%/*}
+declare -r HOOKS_SRC=$SCRIPT_DIR/hooks
+declare -r HOOKS_DST=$REPO_ROOT/.git/hooks
 
-info()    { printf "${GREEN}✓${NC} %s\n" "$*"; }
-warn()    { printf "${YELLOW}▲${NC} %s\n" "$*"; }
-error()   { printf "${RED}✗${NC} %s\n" "$*" >&2; }
+# Global variables
+declare -i VERBOSE=1
+declare -i INSTALLED=0
+declare -- HOOK_NAME='' DST='' ANSWER=''
 
-# Find repo root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-HOOKS_SRC="$SCRIPT_DIR/hooks"
-HOOKS_DST="$REPO_ROOT/.git/hooks"
+# Colors (TTY-conditional)
+if [[ -t 1 && -t 2 ]]; then
+  declare -r RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' NC=$'\033[0m'
+else
+  declare -r RED='' GREEN='' YELLOW='' CYAN='' NC=''
+fi
+
+# Messaging functions
+_msg() {
+  local -- prefix
+  case ${FUNCNAME[1]} in
+    info)    prefix="${CYAN}◉${NC}" ;;
+    success) prefix="${GREEN}✓${NC}" ;;
+    warn)    prefix="${YELLOW}▲${NC}" ;;
+    error)   prefix="${RED}✗${NC}" ;;
+    *)       prefix='◉' ;;
+  esac
+  >&2 printf '%s %s\n' "$prefix" "$*"
+}
+info()    { ((VERBOSE)) || return 0; _msg "$@"; }
+success() { ((VERBOSE)) || return 0; _msg "$@"; }
+warn()    { _msg "$@"; }
+error()   { _msg "$@"; }
+die()     { (($# < 2)) || error "${@:2}"; exit "${1:-1}"; }
 
 # Verify we're in a git repo
 if [[ ! -d "$REPO_ROOT/.git" ]]; then
-  error "Not a git repository: $REPO_ROOT"
-  exit 1
+  die 1 "Not a git repository: ${REPO_ROOT@Q}"
 fi
 
 # Verify hooks source directory exists
 if [[ ! -d "$HOOKS_SRC" ]]; then
-  error "Hooks source directory not found: $HOOKS_SRC"
-  exit 1
+  die 3 "Hooks source directory not found: ${HOOKS_SRC@Q}"
 fi
 
-echo "Installing git hooks for yatti-api..."
-echo ""
+info 'Installing git hooks for yatti-api...'
+>&2 echo
 
 # Install each hook
-declare -i installed=0
 for hook in "$HOOKS_SRC"/*; do
   [[ -f "$hook" ]] || continue
 
-  hook_name=$(basename "$hook")
-  dst="$HOOKS_DST/$hook_name"
+  HOOK_NAME=${hook##*/}
+  DST="$HOOKS_DST/$HOOK_NAME"
 
   # Check if hook already exists
-  if [[ -f "$dst" ]]; then
-    if cmp -s "$hook" "$dst"; then
-      info "$hook_name (already installed, up to date)"
+  if [[ -f "$DST" ]]; then
+    if cmp -s "$hook" "$DST"; then
+      success "$HOOK_NAME (already installed, up to date)"
     else
-      warn "$hook_name exists with different content"
-      read -rp "  Overwrite? [y/N] " answer
-      if [[ "$answer" =~ ^[Yy] ]]; then
-        cp "$hook" "$dst"
-        chmod 755 "$dst"
-        info "$hook_name (updated)"
-        installed+=1
+      warn "$HOOK_NAME exists with different content"
+      read -rp '  Overwrite? [y/N] ' ANSWER
+      if [[ "$ANSWER" =~ ^[Yy] ]]; then
+        cp "$hook" "$DST" || die 1 "Failed to copy ${hook@Q}"
+        chmod 755 "$DST" || die 1 "Failed to chmod ${DST@Q}"
+        success "$HOOK_NAME (updated)"
+        INSTALLED+=1
       else
-        warn "$hook_name (skipped)"
+        warn "$HOOK_NAME (skipped)"
       fi
     fi
   else
-    cp "$hook" "$dst"
-    chmod 755 "$dst"
-    info "$hook_name (installed)"
-    ((++installed))
+    cp "$hook" "$DST" || die 1 "Failed to copy ${hook@Q}"
+    chmod 755 "$DST" || die 1 "Failed to chmod ${DST@Q}"
+    success "$HOOK_NAME (installed)"
+    INSTALLED+=1
   fi
 done
 
-echo ""
-if ((installed > 0)); then
-  info "Installed $installed hook(s)"
+>&2 echo
+if ((INSTALLED)); then
+  success "Installed $INSTALLED hook(s)"
 else
-  info "All hooks already installed"
+  success 'All hooks already installed'
 fi
 
 # Check for shellcheck
 if ! command -v shellcheck &>/dev/null; then
-  echo ""
-  warn "shellcheck not found - pre-commit hook will skip linting"
-  echo "  Install: sudo apt-get install shellcheck"
+  >&2 echo
+  warn 'shellcheck not found - pre-commit hook will skip linting'
+  warn 'Install: sudo apt-get install shellcheck'
 fi
 
 #fin

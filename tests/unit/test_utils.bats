@@ -12,96 +12,11 @@ teardown() {
   teardown_test_env
 }
 
-# Tests for trim() function
-
-@test "trim() removes leading whitespace" {
-  result=$(trim "  hello")
-  [[ "$result" == "hello" ]]
-}
-
-@test "trim() removes trailing whitespace" {
-  result=$(trim "hello  ")
-  [[ "$result" == "hello" ]]
-}
-
-@test "trim() removes both leading and trailing whitespace" {
-  result=$(trim "  hello  ")
-  [[ "$result" == "hello" ]]
-}
-
-@test "trim() removes tabs and spaces" {
-  result=$(trim $'	  hello world	  ')
-  [[ "$result" == "hello world" ]]
-}
-
-@test "trim() handles empty string" {
-  result=$(trim "")
-  [[ "$result" == "" ]]
-}
-
-@test "trim() handles string with only whitespace" {
-  result=$(trim "   ")
-  [[ "$result" == "" ]]
-}
-
-@test "trim() preserves internal whitespace" {
-  result=$(trim "  hello   world  ")
-  [[ "$result" == "hello   world" ]]
-}
-
-# Tests for s() pluralization function
-
-@test "s() returns empty string for 1" {
-  result=$(s 1)
-  [[ "$result" == "" ]]
-}
-
-@test "s() returns 's' for 0" {
-  result=$(s 0)
-  [[ "$result" == "s" ]]
-}
-
-@test "s() returns 's' for 2" {
-  result=$(s 2)
-  [[ "$result" == "s" ]]
-}
-
-@test "s() returns 's' for large numbers" {
-  result=$(s 999)
-  [[ "$result" == "s" ]]
-}
-
-@test "s() handles negative numbers" {
-  result=$(s -1)
-  [[ "$result" == "s" ]]
-}
-
 # Tests for noarg() function
 
 @test "noarg() succeeds with valid argument" {
   run noarg "-K" "value"
   [[ "$status" -eq 0 ]]
-}
-
-# Tests for decp() function
-
-@test "decp() prints VERBOSE variable by default" {
-  # shellcheck disable=SC2034  # VERBOSE is used by decp() via declare -p
-  VERBOSE=1
-  result=$(decp)
-  [[ "$result" == *"VERBOSE"* ]]
-}
-
-@test "decp() prints specified variable" {
-  # shellcheck disable=SC2034  # TEST_VAR is used by decp() via declare -p
-  TEST_VAR="test_value"
-  result=$(decp TEST_VAR)
-  [[ "$result" == *"TEST_VAR"* ]]
-}
-
-@test "decp() handles undefined variable" {
-  result=$(decp UNDEFINED_VAR_12345)
-  [[ "$result" == "undefined" ]]
 }
 
 #fin

@@ -6,57 +6,69 @@
 # To bypass (not recommended): git commit --no-verify
 #
 set -euo pipefail
+shopt -s inherit_errexit
+export PATH=/usr/local/bin:/usr/bin:/bin
+
+# Global state
+declare -a STAGED_FILES=()
+declare -i LOCAL_DUP=0
+declare -i ERRORS=0
+
+# Messaging functions (minimal for hook script)
+warn()  { >&2 printf '▲ %s\n' "$*"; }
+info()  { >&2 printf '◉ %s\n' "$*"; }
+error() { >&2 printf '✗ %s\n' "$*"; }
 
 # Check if shellcheck is available
 if ! command -v shellcheck &>/dev/null; then
-  echo "Warning: shellcheck not installed, skipping lint check"
-  echo "Install with: sudo apt-get install shellcheck"
+  warn 'shellcheck not installed, skipping lint check'
+  warn 'Install with: sudo apt-get install shellcheck'
   exit 0
 fi
 
 # Get list of staged bash files
-declare -a staged_files=()
 while IFS= read -r -d '' file; do
-  staged_files+=("$file")
-done < <(git diff --cached --name-only --diff-filter=ACM -z | tr '\0' '\n' | grep -E '\.(sh|bash)$|^yatti-api$|bash_completion$' | tr '\n' '\0')
+  STAGED_FILES+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACM -z | tr '\0' '\n' | { grep -E '\.(sh|bash)$|^yatti-api$|bash_completion$' ||:; } | tr '\n' '\0')
 
 # Also check files with bash shebang
 while IFS= read -r -d '' file; do
   if [[ -f "$file" ]] && head -1 "$file" 2>/dev/null | grep -qE '^#!.*bash'; then
     # Avoid duplicates
-    local_dup=0
-    for existing in "${staged_files[@]:-}"; do
-      [[ "$existing" == "$file" ]] && local_dup=1 && break
-    done
-    ((local_dup)) || staged_files+=("$file")
+    LOCAL_DUP=0
+    if ((${#STAGED_FILES[@]})); then
+      for existing in "${STAGED_FILES[@]}"; do
+        [[ "$existing" == "$file" ]] && { LOCAL_DUP=1; break; }
+      done
+    fi
+    ((LOCAL_DUP)) || STAGED_FILES+=("$file")
   fi
 done < <(git diff --cached --name-only --diff-filter=ACM -z)
 
 # Exit if no bash files staged
-if [[ ${#staged_files[@]} -eq 0 ]]; then
+if (( ! ${#STAGED_FILES[@]} )); then
   exit 0
 fi
 
-echo "Running shellcheck on ${#staged_files[@]} file(s)..."
+info "Running shellcheck on ${#STAGED_FILES[@]} file(s)..."
 
 # Run shellcheck on each file
-declare -i errors=0
-for file in "${staged_files[@]}"; do
+for file in "${STAGED_FILES[@]}"; do
   if [[ -f "$file" ]]; then
     if ! shellcheck -x "$file"; then
-      errors+=1
+      ERRORS+=1
     fi
   fi
 done
 
-if ((errors > 0)); then
-  echo ""
-  echo "Shellcheck found issues in $errors file(s)."
-  echo "Fix the issues above or use 'git commit --no-verify' to bypass."
+if ((ERRORS)); then
+  >&2 echo
+  error "Shellcheck found issues in $ERRORS file(s)."
+  error "Fix the issues above or use 'git commit --no-verify' to bypass."
   exit 1
 fi
 
-echo "Shellcheck passed."
+info 'Shellcheck passed.'
 exit 0
 
 #fin
