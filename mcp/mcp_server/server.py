@@ -16,6 +16,20 @@ mcp = FastMCP("yatti")
 # Knowledgebase Metadata
 # ============================================================================
 
+# KB name aliases — MCP-facing short name → API/filesystem name
+# Allows users to query with either short or full name
+KB_ALIASES: dict[str, str] = {
+    "peraturan": "peraturan.go.id",
+    "prosocial": "prosocial.world",
+    "wayang": "wayang.net",
+}
+
+
+def resolve_kb_name(name: str) -> str:
+    """Resolve KB alias to actual API/filesystem name."""
+    return KB_ALIASES.get(name, name)
+
+
 KB_INFO = {
     "appliedanthropology": {
         "short": "Applied anthropology research",
@@ -33,7 +47,7 @@ KB_INFO = {
         "short": "Indonesian news archive (1994-2026)",
         "long": "Search jawawa.id comprehensive news archive: 250K+ articles spanning Jakarta Post (1994-2017) and live aggregated news (2025-2026+) from Tempo, Antara, Detik, CNN Indonesia, CNA. Covers Indonesian politics, business, economics, and society."
     },
-    "peraturan": {
+    "peraturan.go.id": {
         "short": "Indonesian laws and regulations",
         "long": "Search Indonesian laws and regulations from peraturan.go.id for legal and compliance research."
     },
@@ -41,11 +55,11 @@ KB_INFO = {
         "short": "Indonesian business operations",
         "long": "Search Indonesian PMA company setup, corporate law, taxation, and business compliance knowledge."
     },
-    "prosocial": {
+    "prosocial.world": {
         "short": "Social evolution research",
         "long": "Search psychology-philosophy insights into human motivations and behavior."
     },
-    "wayang": {
+    "wayang.net": {
         "short": "Indonesian wayang culture",
         "long": "Search Indonesian wayang culture, traditional puppet theater, and cultural anthropology."
     },
@@ -118,11 +132,14 @@ async def run_yatti_command(args: list[str], timeout: int = 120) -> str:
 
 def format_kb_table() -> str:
     """Format knowledgebase list as markdown table."""
+    # Build reverse alias map for display
+    reverse_aliases = {v: k for k, v in KB_ALIASES.items()}
     lines = ["# Available Knowledgebases\n"]
-    lines.append("| Name | Description |")
-    lines.append("|------|-------------|")
+    lines.append("| Name | Alias | Description |")
+    lines.append("|------|-------|-------------|")
     for name, info in sorted(KB_INFO.items()):
-        lines.append(f"| {name} | {info['short']} |")
+        alias = reverse_aliases.get(name, "")
+        lines.append(f"| {name} | {alias} | {info['short']} |")
     return "\n".join(lines)
 
 
@@ -162,15 +179,16 @@ async def yatti_kb_info(
 
     Returns the full description and metadata for the specified KB.
     """
-    if knowledgebase not in KB_INFO:
+    kb_name = resolve_kb_name(knowledgebase)
+    if kb_name not in KB_INFO:
         available = ", ".join(sorted(KB_INFO.keys()))
         return f"Error: Unknown knowledgebase '{knowledgebase}'. Available: {available}"
 
     # Get live info from API
-    result = await run_yatti_command(["kb", "get", knowledgebase])
+    result = await run_yatti_command(["kb", "get", kb_name])
 
-    info = KB_INFO[knowledgebase]
-    return f"# {knowledgebase}\n\n{info['long']}\n\n## API Details\n\n{result}"
+    info = KB_INFO[kb_name]
+    return f"# {kb_name}\n\n{info['long']}\n\n## API Details\n\n{result}"
 
 
 @mcp.tool(
@@ -229,13 +247,14 @@ async def yatti_query(
     - openai_docs: OpenAI API documentation
     - smi: SMI domain research
     """
-    if knowledgebase not in KB_INFO:
+    kb_name = resolve_kb_name(knowledgebase)
+    if kb_name not in KB_INFO:
         available = ", ".join(sorted(KB_INFO.keys()))
         return f"Error: Unknown knowledgebase '{knowledgebase}'. Available: {available}"
 
     args = [
         "query",
-        "-K", knowledgebase,
+        "-K", kb_name,
         "-q", query,
         "--top-k", str(top_k),
         "--temperature", str(temperature),
@@ -265,13 +284,14 @@ async def yatti_query_context_only(
     Returns only the relevant source documents/excerpts without generating
     an AI response. Useful for seeing raw source material.
     """
-    if knowledgebase not in KB_INFO:
+    kb_name = resolve_kb_name(knowledgebase)
+    if kb_name not in KB_INFO:
         available = ", ".join(sorted(KB_INFO.keys()))
         return f"Error: Unknown knowledgebase '{knowledgebase}'. Available: {available}"
 
     args = [
         "query",
-        "-K", knowledgebase,
+        "-K", kb_name,
         "-q", query,
         "--top-k", str(top_k),
         "--context-only"
@@ -299,10 +319,11 @@ async def yatti_history(
     args = ["history", str(limit)]
 
     if knowledgebase:
-        if knowledgebase not in KB_INFO:
+        kb_name = resolve_kb_name(knowledgebase)
+        if kb_name not in KB_INFO:
             available = ", ".join(sorted(KB_INFO.keys()))
             return f"Error: Unknown knowledgebase '{knowledgebase}'. Available: {available}"
-        args.append(knowledgebase)
+        args.append(kb_name)
 
     return await run_yatti_command(args)
 

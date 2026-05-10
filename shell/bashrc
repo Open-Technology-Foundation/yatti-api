@@ -1,0 +1,496 @@
+# shellcheck shell=bash
+# bashrc — YaTTi Shell in-sandbox environment
+# Sourced by bash --rcfile inside the bwrap namespace
+
+# Exit if not running interactively
+[[ $- == *"i"* ]] || return
+
+# ── Shell Options ─────────────────────────────────────────────────────────────
+
+shopt -s checkwinsize         # Update LINES/COLUMNS after each command
+shopt -s globstar             # Enable ** for recursive globbing
+shopt -s histappend           # Append to history, don't overwrite
+
+# ── Environment ───────────────────────────────────────────────────────────────
+
+export PATH=/usr/local/bin:/usr/bin:/bin
+export HOME=/home/user
+export LANG=C
+export LC_ALL=C
+export EDITOR=${EDITOR:-$(command -v joe 2>/dev/null || command -v nano 2>/dev/null || command -v vi)}
+export LESS='-FXRS'
+export TIME_STYLE=long-iso
+
+# ── History ───────────────────────────────────────────────────────────────────
+
+HISTCONTROL=ignoreboth
+HISTFILE="${HOME}/.yatti_history"
+HISTSIZE=2000
+HISTFILESIZE=10000
+
+# ── Knowledgebase Cache ───────────────────────────────────────────────────────
+
+# Fetch KB names once at login — unlikely to change during session
+declare -a YATTI_KB_LIST=()
+_yatti_load_kbs() {
+  local -- json
+  json=$(curl -s --connect-timeout 5 --max-time 15 \
+    -H "X-API-Key: ${YATTI_API_KEY:-}" \
+    "${YATTI_API_BASE:-https://yatti.id/v1}/knowledgebases" 2>/dev/null) || return 1
+  local -- names
+  names=$(echo "$json" | jq -r '.data.knowledgebases[]?.name // empty' 2>/dev/null) || return 1
+  [[ -n "$names" ]] || return 1
+  while IFS= read -r name; do
+    [[ -n "$name" ]] && YATTI_KB_LIST+=("$name")
+  done <<< "$names"
+}
+_yatti_load_kbs || true
+# Reload command if login fetch failed
+kbrefresh() {
+  YATTI_KB_LIST=()
+  if _yatti_load_kbs; then
+    echo "Loaded ${#YATTI_KB_LIST[@]} knowledgebases: ${YATTI_KB_LIST[*]}"
+  else
+    echo "Failed to fetch knowledgebase list" >&2
+  fi
+}
+
+# ── Conversation State ────────────────────────────────────────────────────────
+
+declare -r CONV_BASE="${HOME}/conversations"
+declare -- CONV_NAME
+declare -- CONV_DIR
+declare -- YATTI_KB=''
+
+_conv_resolve() {
+  if [[ -L "${CONV_BASE}/.current" ]]; then
+    local -- resolved
+    resolved=$(cd -P "${CONV_BASE}/.current" 2>/dev/null && pwd) || true
+    CONV_NAME=${resolved##*/}
+    CONV_NAME=${CONV_NAME:-general}
+    CONV_DIR="${CONV_BASE}/${CONV_NAME}"
+  else
+    CONV_NAME=general
+    CONV_DIR="${CONV_BASE}/general"
+  fi
+  # Load per-conversation default KB
+  if [[ -f "${CONV_DIR}/.kb" ]]; then
+    YATTI_KB=$(cat "${CONV_DIR}/.kb")
+  else
+    YATTI_KB=''
+  fi
+}
+_conv_resolve
+
+# ── Prompt ────────────────────────────────────────────────────────────────────
+
+declare -x PS1
+declare -i PROMPT_DIRTRIM=3
+
+_yatti_prompt() {
+  local -i rc=$?
+  _conv_resolve
+  local -- kb_tag=''
+  [[ -n "$YATTI_KB" ]] && kb_tag="[${YATTI_KB}]"
+  PS1="\[\e]0;${CONV_NAME}${kb_tag}@yatti: \w\a\]"        # Terminal title
+  PS1+="\[\033[38;5;8m\]${rc}:"                             # Exit code (gray)
+  PS1+="\[\033[00m\]\[\033[01;34m\]\w"                      # Path (blue)
+  PS1+="\[\033[00m\]:\[\033[01;32m\]${CONV_NAME}"          # Conversation (green)
+  [[ -n "$YATTI_KB" ]] && PS1+="\[\033[01;33m\][$YATTI_KB]" # KB tag (yellow)
+  PS1+="\[\033[01;32m\]@yatti"                              # @yatti (green)
+  PS1+="\[\033[00m\]\n\$ "                                  # Newline + prompt
+}
+PROMPT_COMMAND=_yatti_prompt
+
+# ── Colors ────────────────────────────────────────────────────────────────────
+
+if command -v dircolors >/dev/null 2>&1; then
+  if [[ -r "${HOME}/.dircolors" ]]; then
+    eval "$(dircolors -b "${HOME}/.dircolors")"
+  else
+    eval "$(dircolors -b)"
+  fi
+fi
+
+# ── Aliases ───────────────────────────────────────────────────────────────────
+
+# Navigation
+alias ..='cd ..'
+alias ...='cd ../..'
+
+# File operations
+alias ls='/usr/bin/ls --color=auto --time-style=long-iso --group-directories-first'
+alias ll='/usr/bin/ls -lhA --group-directories-first --color=always --time-style=long-iso'
+alias lla='/usr/bin/ls -lhA --color=always --time-style=long-iso --group-directories-first'
+alias la='/usr/bin/ls --color=always -A --group-directories-first'
+alias l='/usr/bin/ls --color=always -CF --group-directories-first'
+alias dir='/usr/bin/ls --color=auto -la'
+alias cp='/usr/bin/cp -piv'
+alias mv='/usr/bin/mv -i'
+
+# Search and view
+alias grep='/usr/bin/grep --color=auto'
+alias less='/usr/bin/less -R'
+
+# System
+alias df='/usr/bin/df --human-readable'
+alias free='/usr/bin/free -h --si'
+alias top='/usr/bin/top -d3'
+alias h='history'
+alias '?'='/usr/bin/bc'
+
+# YaTTi shorthand
+alias kb='yatti-api kb'
+alias query='yatti-api query'
+alias history='yatti-api history'
+alias status='yatti-api status'
+alias docs='yatti-api docs'
+
+# ── Conversation Management ───────────────────────────────────────────────────
+
+new() {
+  if [[ -z "${1:-}" ]]; then
+    echo "Usage: new <conversation-name>" >&2
+    return 1
+  fi
+  local -- name=$1
+  if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "Error: name must be alphanumeric, dash, or underscore" >&2
+    return 1
+  fi
+  local -- dir="${CONV_BASE}/${name}"
+  if [[ -d "$dir" ]]; then
+    echo "Conversation ${name@Q} already exists — use 'use ${name}' to switch" >&2
+    return 1
+  fi
+  mkdir -p "$dir"
+  ln -sf "$name" "${CONV_BASE}/.current"
+  _conv_resolve
+  echo "Created and switched to conversation: ${name}"
+}
+
+use() {
+  if [[ -z "${1:-}" ]]; then
+    echo "Usage: use <conversation-name>" >&2
+    return 1
+  fi
+  local -- name=$1
+  local -- dir="${CONV_BASE}/${name}"
+  if [[ ! -d "$dir" ]]; then
+    echo "Error: conversation ${name@Q} not found" >&2
+    echo "Available:" >&2
+    list
+    return 1
+  fi
+  ln -sf "$name" "${CONV_BASE}/.current"
+  _conv_resolve
+  echo "Switched to conversation: ${name}"
+}
+
+list() {
+  if [[ ! -d "$CONV_BASE" ]]; then
+    echo "No conversations yet. Use 'new <name>' to create one." >&2
+    return 0
+  fi
+  _conv_resolve
+  local -- name
+  for dir in "${CONV_BASE}"/*/; do
+    [[ -d "$dir" ]] || continue
+    name=${dir%/}
+    name=${name##*/}
+    local -i count
+    count=$(find "$dir" -name '*-query.txt' 2>/dev/null | wc -l)
+    local -- marker=' '
+    [[ "$name" == "$CONV_NAME" ]] && marker='*'
+    local -- last_mod='-'
+    local -- newest
+    newest=$(find "$dir" -name '*.txt' -newer "$dir" 2>/dev/null | head -1)
+    if [[ -n "$newest" ]]; then
+      last_mod=$(stat -c '%Y' "$newest" 2>/dev/null | xargs -I{} date -d @{} '+%Y-%m-%d %H:%M' 2>/dev/null) || last_mod='-'
+    elif (( count > 0 )); then
+      last_mod=$(stat -c '%Y' "$dir" 2>/dev/null | xargs -I{} date -d @{} '+%Y-%m-%d %H:%M' 2>/dev/null) || last_mod='-'
+    fi
+    printf ' %s %-24s  %3d queries  %s\n' "$marker" "$name" "$count" "$last_mod"
+  done
+}
+
+current() {
+  _conv_resolve
+  echo "Conversation: ${CONV_NAME}"
+  echo "Directory:    ${CONV_DIR}"
+  if [[ -n "$YATTI_KB" ]]; then
+    echo "Default KB:   ${YATTI_KB}"
+  fi
+  if [[ -d "$CONV_DIR" ]]; then
+    local -i count
+    count=$(find "$CONV_DIR" -name '*-query.txt' 2>/dev/null | wc -l)
+    echo "Queries:      ${count}"
+  fi
+}
+
+# ── Default Knowledgebase ─────────────────────────────────────────────────────
+
+setkb() {
+  _conv_resolve
+  case "${1:-}" in
+    '')
+      if [[ -n "$YATTI_KB" ]]; then
+        echo "Default KB: ${YATTI_KB}"
+      else
+        echo "No default KB set. Usage: setkb <knowledgebase>" >&2
+        if (( ${#YATTI_KB_LIST[@]} > 0 )); then
+          echo "Available: ${YATTI_KB_LIST[*]}" >&2
+        fi
+      fi
+      ;;
+    --clear|-c)
+      rm -f "${CONV_DIR}/.kb"
+      YATTI_KB=''
+      echo "Default KB cleared"
+      ;;
+    *)
+      local -- name=$1
+      # Validate against cached KB list
+      local -i found=0
+      local -- kb
+      for kb in "${YATTI_KB_LIST[@]}"; do
+        [[ "$kb" == "$name" ]] && { found=1; break; }
+      done
+      if (( ${#YATTI_KB_LIST[@]} > 0 )) && (( ! found )); then
+        echo "Unknown knowledgebase: ${name@Q}" >&2
+        echo "Available: ${YATTI_KB_LIST[*]}" >&2
+        return 1
+      fi
+      echo "$name" > "${CONV_DIR}/.kb"
+      YATTI_KB=$name
+      echo "Default KB: ${YATTI_KB}"
+      ;;
+  esac
+}
+
+# ── ask — Query with auto-save to conversation ───────────────────────────────
+
+ask() {
+  _conv_resolve
+  local -- kb query_text
+  if [[ -n "$YATTI_KB" ]] && [[ $# -ge 1 ]]; then
+    kb=$YATTI_KB
+    query_text="$*"
+  elif [[ $# -ge 2 ]]; then
+    kb=$1; shift
+    query_text="$*"
+  else
+    echo "Usage: ask <query text...>        (when default KB is set)" >&2
+    echo "       ask <knowledgebase> <query text...>" >&2
+    [[ -z "$YATTI_KB" ]] && echo "Tip: use 'setkb <kb>' to set a default knowledgebase" >&2
+    return 1
+  fi
+
+  # Next sequence number (zero-padded)
+  mkdir -p "$CONV_DIR"
+  local -- last seq
+  last=$(find "$CONV_DIR" -maxdepth 1 -name '*-query.txt' 2>/dev/null | sort -r | head -1)
+  last=${last##*/}; last=${last%%-*}
+  seq=$(printf '%03d' $(( 10#${last:-0} + 1 )) )
+
+  # Save query
+  echo "$query_text" > "${CONV_DIR}/${seq}-query.txt"
+
+  # Run query via curl directly (avoids yatti-api's color formatting)
+  local -- payload response
+  local -i rc=0
+  payload=$(jq -n --arg kb "$kb" --arg q "$query_text" \
+    '{knowledgebase: $kb, query: $q, options: {top_k: 5, temperature: 0, context_scope: 3}}')
+  response=$(curl -s --connect-timeout 10 --max-time 120 \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: ${YATTI_API_KEY:-}" \
+    -d "$payload" \
+    "${YATTI_API_BASE:-https://yatti.id/v1}/query" 2>/dev/null) || rc=$?
+
+  # Check for API-level errors
+  local -- success
+  success=$(echo "$response" | jq -r '.success // empty' 2>/dev/null)
+  if [[ "$success" != "true" ]]; then
+    local -- errmsg
+    errmsg=$(echo "$response" | jq -r '.error.message // "Query failed"' 2>/dev/null)
+    echo "Error: ${errmsg}" >&2
+    rc=1
+  fi
+
+  # Strip sensitive fields and save
+  local -- clean
+  clean=$(echo "$response" | jq 'del(.data.metadata.options_used.env?)' 2>/dev/null) \
+    || clean=$response
+  echo "$clean" > "${CONV_DIR}/${seq}-response.txt"
+
+  # Display the AI response text
+  if (( rc == 0 )); then
+    local -- answer
+    answer=$(echo "$response" | jq -r '.data.response // empty' 2>/dev/null)
+    if [[ -n "$answer" ]]; then
+      echo "$answer"
+    else
+      echo "$response"
+    fi
+  fi
+
+  # Save metadata
+  local -- status="ok"
+  (( rc != 0 )) && status="error"
+  local -- query_id model
+  query_id=$(echo "$response" | jq -r '.data.query_id // empty' 2>/dev/null)
+  model=$(echo "$response" | jq -r '.data.metadata.options_used.model // empty' 2>/dev/null)
+  printf '{"seq":"%s","kb":"%s","model":"%s","query_id":"%s","timestamp":"%s","status":"%s"}\n' \
+    "$seq" "$kb" "${model:-unknown}" "${query_id:-}" "$(date -Iseconds)" "$status" \
+    > "${CONV_DIR}/${seq}-meta.json"
+  return "$rc"
+}
+
+# ── Disabled Commands ─────────────────────────────────────────────────────────
+
+_yatti_guard() {
+  local -- cmd=$1
+  case "$cmd" in
+    configure)
+      echo "API key is managed by your administrator. Contact them to change it." >&2
+      return 1
+      ;;
+    update)
+      echo "Updates are managed by the server administrator." >&2
+      return 1
+      ;;
+    query)
+      if [[ -n "${YATTI_KB:-}" ]]; then
+        shift  # remove 'query'
+        local -a qargs=()
+        # Inject -K if not already provided
+        [[ " $* " == *" -K "* || " $* " == *" --knowledgebase "* ]] || qargs+=(-K "$YATTI_KB")
+        # If args don't start with - and no -q flag, treat as bare query text
+        if [[ $# -gt 0 && "${1:0:1}" != "-" ]] && ! [[ " $* " == *" -q "* || " $* " == *" --query "* ]]; then
+          qargs+=(-q "$*")
+          command yatti-api query "${qargs[@]}"
+        else
+          command yatti-api query "${qargs[@]}" "$@"
+        fi
+        return
+      fi
+      ;;
+  esac
+  command yatti-api "$@"
+}
+alias yatti-api='_yatti_guard'
+
+# ── Completion ────────────────────────────────────────────────────────────────
+
+# Load bash-completion library (provides _init_completion, etc.)
+if [[ -f /usr/share/bash-completion/bash_completion ]]; then
+  # shellcheck disable=SC1091
+  source /usr/share/bash-completion/bash_completion
+fi
+
+if [[ -f /etc/yatti-shell/yatti-api.bash_completion ]]; then
+  # shellcheck disable=SC1091
+  source /etc/yatti-shell/yatti-api.bash_completion
+fi
+
+_conv_complete() {
+  local -- cur=${COMP_WORDS[COMP_CWORD]}
+  local -- names
+  names=$(find "${CONV_BASE}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null)
+  mapfile -t COMPREPLY < <(compgen -W "$names" -- "$cur")
+}
+complete -F _conv_complete use
+complete -F _conv_complete new
+
+# Tab completion for setkb (uses cached KB list)
+_setkb_complete() {
+  local -- cur=${COMP_WORDS[COMP_CWORD]}
+  mapfile -t COMPREPLY < <(compgen -W "${YATTI_KB_LIST[*]} --clear" -- "$cur")
+}
+complete -F _setkb_complete setkb
+
+# Completions for YaTTi shorthand aliases
+_yatti_query_complete() {
+  local -- cur=${COMP_WORDS[COMP_CWORD]}
+  local -- prev=${COMP_WORDS[COMP_CWORD-1]}
+  case "$prev" in
+    -K|--knowledgebase)
+      mapfile -t COMPREPLY < <(compgen -W "${YATTI_KB_LIST[*]}" -- "$cur") ;;
+    -m|--model)
+      mapfile -t COMPREPLY < <(compgen -W "claude-sonnet-4-6 claude-haiku-4-5 gpt-4o gpt-4o-mini gemini-1.5-flash gemini-1.5-pro" -- "$cur") ;;
+    -p|--prompt-template)
+      mapfile -t COMPREPLY < <(compgen -W "default scholarly technical concise analytical conversational instructive" -- "$cur") ;;
+    -Q|--query-file)
+      mapfile -t COMPREPLY < <(compgen -f -- "$cur") ;;
+    *)
+      mapfile -t COMPREPLY < <(compgen -W "-K -q -Q -k -t -m -s -f -c -M -p --knowledgebase --query --query-file --top-k --temperature --model --context-scope --force-refresh --context --context-only --max-tokens --prompt-template --cache-ttl --timeout --help" -- "$cur") ;;
+  esac
+}
+complete -F _yatti_query_complete query
+
+_yatti_kb_complete() {
+  local -- cur=${COMP_WORDS[COMP_CWORD]}
+  local -- prev=${COMP_WORDS[COMP_CWORD-1]}
+  case "$prev" in
+    get) mapfile -t COMPREPLY < <(compgen -W "${YATTI_KB_LIST[*]}" -- "$cur") ;;
+    *)   mapfile -t COMPREPLY < <(compgen -W "list get sync --long -l" -- "$cur") ;;
+  esac
+}
+complete -F _yatti_kb_complete kb
+
+# ask: first arg is KB (if no default set), then freetext
+_ask_complete() {
+  local -- cur=${COMP_WORDS[COMP_CWORD]}
+  # If default KB is set, no completion needed (all args are query text)
+  if [[ -n "${YATTI_KB:-}" ]]; then
+    return
+  fi
+  # First arg: knowledgebase name
+  if (( COMP_CWORD == 1 )); then
+    mapfile -t COMPREPLY < <(compgen -W "${YATTI_KB_LIST[*]}" -- "$cur")
+  fi
+}
+complete -F _ask_complete ask
+
+# history: [limit] [knowledgebase]
+_yatti_history_complete() {
+  local -- cur=${COMP_WORDS[COMP_CWORD]}
+  if (( COMP_CWORD == 1 )); then
+    mapfile -t COMPREPLY < <(compgen -W "5 10 20 50 100" -- "$cur")
+  elif (( COMP_CWORD == 2 )); then
+    mapfile -t COMPREPLY < <(compgen -W "${YATTI_KB_LIST[*]}" -- "$cur")
+  fi
+}
+complete -F _yatti_history_complete history
+
+# status: subcommands
+_yatti_status_complete() {
+  local -- cur=${COMP_WORDS[COMP_CWORD]}
+  if (( COMP_CWORD == 1 )); then
+    mapfile -t COMPREPLY < <(compgen -W "health info" -- "$cur")
+  fi
+}
+complete -F _yatti_status_complete status
+
+# docs: subcommands and format
+_yatti_docs_complete() {
+  local -- cur=${COMP_WORDS[COMP_CWORD]}
+  if (( COMP_CWORD == 1 )); then
+    mapfile -t COMPREPLY < <(compgen -W "user api technical list help" -- "$cur")
+  elif (( COMP_CWORD == 2 )); then
+    mapfile -t COMPREPLY < <(compgen -W "raw html" -- "$cur")
+  fi
+}
+complete -F _yatti_docs_complete docs
+
+# No-arg commands: suppress file completion fallback
+complete -W '' current list kbrefresh
+
+# ── Welcome ───────────────────────────────────────────────────────────────────
+
+if [[ -f /etc/yatti-shell/motd ]]; then
+  cat /etc/yatti-shell/motd
+fi
+
+#fin

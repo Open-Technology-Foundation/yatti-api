@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# yatti-user-add — Create a YaTTi Shell user with SSH key and API key
+set -euo pipefail
+shopt -s inherit_errexit
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+
+declare -r PROG=${0##*/}
+declare -r GROUP_NAME=yatti-shell
+declare -r LAUNCHER=/usr/local/bin/yatti-shell-gate
+
+# Message helpers
+_msg() { >&2 printf '%s: %s\n' "$PROG" "$1"; }
+info()    { _msg "$1"; }
+success() { _msg "OK: $1"; }
+die()     { _msg "ERROR: $2"; exit "$1"; }
+
+usage() {
+  cat >&2 <<EOF
+Usage: ${PROG} <username> <ssh-public-key> [api-key]
+
+Arguments:
+  username        System username to create
+  ssh-public-key  SSH public key string (ssh-ed25519 AAAA... user@host)
+  api-key         YaTTi API key (create via web panel first; prompted if omitted)
+
+The user will be created with:
+  - Login shell: ${LAUNCHER}
+  - Group membership: ${GROUP_NAME}
+  - Home directory: /home/<username>
+  - Default conversation: ~/conversations/general/
+
+Workflow:
+  1. Create the API user via the YaTTi web admin panel
+  2. Copy the API key from the web panel
+  3. Run: ${PROG} <username> <ssh-key> <api-key>
+EOF
+  exit 2
+}
+
+# ── Argument Parsing ──────────────────────────────────────────────────────────
+
+(( EUID == 0 )) || die 1 "Must run as root"
+(( $# >= 2 ))   || usage
+
+declare -r USERNAME=$1
+declare -r SSH_KEY=$2
+declare -- API_KEY=${3:-}
+
+# Validate username
+if [[ ! "$USERNAME" =~ ^[a-z][a-z0-9_-]{1,30}$ ]]; then
+  die 2 "Invalid username: must be lowercase, start with letter, 2-31 chars"
+fi
+
+# Validate SSH key format
+if [[ ! "$SSH_KEY" =~ ^ssh-(ed25519|rsa|ecdsa) ]]; then
+  die 2 "Invalid SSH key format: must start with ssh-ed25519, ssh-rsa, or ssh-ecdsa"
+fi
+
+# Check prerequisites
+[[ -x "$LAUNCHER" ]] || die 3 "Launcher not installed at ${LAUNCHER} — run 'make install' first"
+getent group "$GROUP_NAME" >/dev/null 2>&1 || die 3 "Group ${GROUP_NAME} missing — run yatti-shell-setup first"
+
+# Prompt for API key if not provided
+if [[ -z "$API_KEY" ]]; then
+  read -rsp "${PROG}: Enter API key for ${USERNAME}: " API_KEY
+  echo >&2
+  [[ -n "$API_KEY" ]] || die 2 "API key cannot be empty"
+fi
+
+# ── Create User ───────────────────────────────────────────────────────────────
+
+if id "$USERNAME" >/dev/null 2>&1; then
+  die 4 "User ${USERNAME@Q} already exists"
+fi
+
+adduser --disabled-password --gecos "YaTTi Shell User" --shell "$LAUNCHER" "$USERNAME" \
+  || die 4 "Failed to create user ${USERNAME@Q}"
+usermod -aG "$GROUP_NAME" "$USERNAME" \
+  || die 4 "Failed to add ${USERNAME@Q} to group ${GROUP_NAME}"
+success "Created user ${USERNAME} in group ${GROUP_NAME}"
+
+# ── SSH Key ───────────────────────────────────────────────────────────────────
+
+declare -r SSH_DIR="/home/${USERNAME}/.ssh"
+install -d -m 700 -o "$USERNAME" -g "$USERNAME" "$SSH_DIR"
+echo "$SSH_KEY" > "${SSH_DIR}/authorized_keys"
+chmod 600 "${SSH_DIR}/authorized_keys"
+chown "$USERNAME:$USERNAME" "${SSH_DIR}/authorized_keys"
+success "Installed SSH key"
+
+# ── API Key ───────────────────────────────────────────────────────────────────
+
+declare -r CONFIG_DIR="/home/${USERNAME}/.config/yatti-api"
+install -d -m 700 -o "$USERNAME" -g "$USERNAME" "/home/${USERNAME}/.config"
+install -d -m 700 -o "$USERNAME" -g "$USERNAME" "$CONFIG_DIR"
+install -m 600 /dev/null "${CONFIG_DIR}/api_key"
+echo "$API_KEY" > "${CONFIG_DIR}/api_key"
+chown "$USERNAME:$USERNAME" "${CONFIG_DIR}/api_key"
+success "Saved API key"
+
+# ── Conversation Directory ────────────────────────────────────────────────────
+
+declare -r CONV_DIR="/home/${USERNAME}/conversations"
+install -d -m 755 -o "$USERNAME" -g "$USERNAME" "$CONV_DIR"
+install -d -m 755 -o "$USERNAME" -g "$USERNAME" "${CONV_DIR}/general"
+ln -sf general "${CONV_DIR}/.current"
+chown -h "$USERNAME:$USERNAME" "${CONV_DIR}/.current"
+success "Created default conversation directory"
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+
+cat >&2 <<EOF
+
+User ${USERNAME} created successfully.
+  Home:    /home/${USERNAME}
+  Shell:   ${LAUNCHER}
+  Group:   ${GROUP_NAME}
+  SSH in:  ssh ${USERNAME}@$(hostname)
+
+EOF
+
+#fin

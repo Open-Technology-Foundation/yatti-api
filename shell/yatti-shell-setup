@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+# yatti-shell-setup — One-time system setup for YaTTi Shell environment
+# Creates group, shared config, busybox symlinks, and nftables rules
+set -euo pipefail
+shopt -s inherit_errexit
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+
+# Constants
+declare -r PROG=${0##*/}
+declare -r SHARE_DIR=/usr/local/share/yatti-shell
+declare -r BIN_DIR="${SHARE_DIR}/bin"
+declare -r CONF_DIR="${SHARE_DIR}/conf"
+declare -r GROUP_NAME=yatti-shell
+
+# Allowed busybox applets for the sandbox
+declare -ra ALLOWED_APPLETS=(
+  ls cat grep head tail wc less mkdir rm rmdir pwd
+  cp mv date echo printf sort uniq tee tr vi sed awk
+  find xargs dirname basename touch chmod stat df du
+  clear reset true false test seq id whoami sleep
+  ln readlink realpath sha256sum md5sum
+)
+
+# Message helpers
+_msg() { >&2 printf '%s: %s\n' "$PROG" "$1"; }
+info()    { _msg "$1"; }
+success() { _msg "OK: $1"; }
+warn()    { _msg "WARNING: $1"; }
+die()     { _msg "ERROR: $2"; exit "$1"; }
+
+# Root check
+(( EUID == 0 )) || die 1 "Must run as root"
+
+# ── Prerequisites ──────────────────────────────────────────────────────────────
+
+info "Checking prerequisites..."
+
+declare -a MISSING=()
+for cmd in bwrap busybox curl jq yatti-api nft; do
+  command -v "$cmd" >/dev/null || MISSING+=("$cmd")
+done
+
+if (( ${#MISSING[@]} > 0 )); then
+  die 2 "Missing commands: ${MISSING[*]}"
+fi
+
+success "All prerequisites found"
+
+# ── bwrap setuid ──────────────────────────────────────────────────────────────
+
+declare -- BWRAP_BIN
+BWRAP_BIN=$(command -v bwrap)
+if [[ ! -u "$BWRAP_BIN" ]]; then
+  chmod u+s "$BWRAP_BIN"
+  success "Set setuid on ${BWRAP_BIN} (required for user namespace creation)"
+else
+  info "bwrap already setuid"
+fi
+
+# ── System Group ───────────────────────────────────────────────────────────────
+
+if getent group "$GROUP_NAME" >/dev/null 2>&1; then
+  info "Group ${GROUP_NAME} already exists"
+else
+  groupadd --system "$GROUP_NAME"
+  success "Created system group ${GROUP_NAME}"
+fi
+
+# ── Shared Directories ────────────────────────────────────────────────────────
+
+install -d -m 755 "$SHARE_DIR"
+install -d -m 755 "$BIN_DIR"
+install -d -m 755 "$CONF_DIR"
+
+# ── Busybox Applet Symlinks ───────────────────────────────────────────────────
+
+info "Creating busybox applet symlinks in ${BIN_DIR}..."
+
+# Get list of available applets
+declare -A AVAILABLE_APPLETS
+while IFS= read -r applet; do
+  AVAILABLE_APPLETS["$applet"]=1
+done < <(busybox --list)
+
+declare -i created=0
+declare -i skipped=0
+
+for applet in "${ALLOWED_APPLETS[@]}"; do
+  if [[ -v AVAILABLE_APPLETS["$applet"] ]]; then
+    # Target /usr/bin/busybox — the path inside the bwrap sandbox
+    ln -sf /usr/bin/busybox "${BIN_DIR}/${applet}"
+    created+=1
+  else
+    warn "Applet ${applet@Q} not available in busybox"
+    skipped+=1
+  fi
+done
+
+success "Created ${created} symlinks (${skipped} skipped)"
+
+# Add busybox binary and env to BIN_DIR so it's a self-contained /usr/bin
+cp /usr/bin/busybox "${BIN_DIR}/busybox"
+chmod 755 "${BIN_DIR}/busybox"
+cp /usr/bin/env "${BIN_DIR}/env"
+chmod 755 "${BIN_DIR}/env"
+success "Copied busybox and env binaries to ${BIN_DIR}"
+
+# Replace key busybox applets with coreutils versions for full flag compatibility
+declare -ra COREUTILS_CMDS=(
+  cat ls head tail grep sort wc mkdir rm rmdir
+  cp mv chmod stat touch find xargs date less realpath dircolors sed
+  bc top free
+)
+for cmd in "${COREUTILS_CMDS[@]}"; do
+  if [[ -x "/usr/bin/${cmd}" ]]; then
+    rm -f "${BIN_DIR}/${cmd}"
+    cp "/usr/bin/${cmd}" "${BIN_DIR}/${cmd}"
+    chmod 755 "${BIN_DIR}/${cmd}"
+  fi
+done
+success "Installed coreutils overrides for ${#COREUTILS_CMDS[@]} commands"
+
+# Add editors if available
+for editor in joe nano; do
+  if command -v "$editor" >/dev/null; then
+    cp "$(command -v "$editor")" "${BIN_DIR}/${editor}"
+    chmod 755 "${BIN_DIR}/${editor}"
+    success "Copied ${editor} to ${BIN_DIR}"
+  fi
+done
+
+# ── Copy Static Config Files ─────────────────────────────────────────────────
+
+declare -- SCRIPT_DIR
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+declare -r SCRIPT_DIR
+
+for file in bashrc motd; do
+  if [[ -f "${SCRIPT_DIR}/${file}" ]]; then
+    install -m 644 "${SCRIPT_DIR}/${file}" "${CONF_DIR}/${file}"
+    success "Installed ${file} to ${CONF_DIR}/"
+  else
+    warn "${file} not found in ${SCRIPT_DIR}/ — install manually later"
+  fi
+done
+
+# Install bash completion if available
+declare -r COMPLETION_SRC="${SCRIPT_DIR}/../yatti-api.bash_completion"
+if [[ -f "$COMPLETION_SRC" ]]; then
+  install -m 644 "$COMPLETION_SRC" "${CONF_DIR}/yatti-api.bash_completion"
+  success "Installed bash completion"
+fi
+
+# ── nftables Rules ────────────────────────────────────────────────────────────
+
+info "Configuring nftables rules..."
+
+# Resolve yatti.id IP (may change — admin should re-run setup if DNS changes)
+declare -- YATTI_IP
+YATTI_IP=$(dig +short yatti.id A 2>/dev/null | head -1) || true
+
+if [[ -z "$YATTI_IP" ]]; then
+  warn "Could not resolve yatti.id — skipping nftables setup"
+  warn "Run this script again when DNS is available, or add rules manually"
+else
+  declare -r NFT_CONF=/etc/nftables.d/yatti-shell.conf
+
+  # Check if nftables.d include exists in main config
+  install -d -m 755 /etc/nftables.d
+
+  cat > "$NFT_CONF" <<NFTEOF
+#!/usr/sbin/nft -f
+# YaTTi Shell — restrict yatti-shell group to yatti.id:443 only
+# Resolved IP: ${YATTI_IP} (re-run yatti-shell-setup if DNS changes)
+
+table inet yatti-shell {
+  chain output {
+    type filter hook output priority 0; policy accept;
+
+    # Allow localhost (DNS stub resolver)
+    meta skgid ${GROUP_NAME} oifname "lo" accept
+
+    # Allow yatti.id on HTTPS
+    meta skgid ${GROUP_NAME} ip daddr ${YATTI_IP} tcp dport 443 accept
+
+    # Drop everything else from yatti-shell group
+    meta skgid ${GROUP_NAME} drop
+  }
+}
+NFTEOF
+
+  # Load the rules
+  if nft -f "$NFT_CONF" 2>/dev/null; then
+    success "nftables rules loaded (yatti.id=${YATTI_IP})"
+  else
+    warn "Failed to load nftables rules — load manually: nft -f ${NFT_CONF}"
+  fi
+fi
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+
+cat >&2 <<EOF
+
+Setup complete. Next steps:
+  1. Install launcher:  sudo install -m 755 ${SCRIPT_DIR}/yatti-shell-launcher /usr/local/bin/
+  2. Add SSH config:    sudo install -m 644 ${SCRIPT_DIR}/50-yatti-shell.conf /etc/ssh/sshd_config.d/
+  3. Reload SSH:        sudo systemctl reload sshd
+  4. Add a user:        sudo ${SCRIPT_DIR}/yatti-user-add <username> <ssh-pubkey> <api-key>
+
+EOF
+
+#fin

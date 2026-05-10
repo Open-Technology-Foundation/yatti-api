@@ -1,0 +1,21 @@
+
+  ╻ ╻┏━┓╺┳╸╺┳╸╻   ┏━┓╻ ╻┏━╸╻  ╻
+  ┗┳┛┣━┫ ┃  ┃ ┃   ┗━┓┣━┫┣╸ ┃  ┃
+   ╹ ╹ ╹ ╹  ╹ ╹   ┗━┛╹ ╹┗━╸┗━╸┗━╸
+  RAG Knowledge Query Terminal
+
+  Query:
+    setkb <kb>                    Set default knowledgebase
+    query -q "question"           Query (uses default KB)
+    kb list                       List knowledgebases
+    history                       View query history
+
+  Conversations:
+    new <name>                    Start new conversation
+    use <name>                    Switch conversation
+    list / current                List or show active
+
+  Shell:
+    ls cat grep head tail wc less sort find
+    joe nano vi  |  Pipes (|) and redirection (> >>)
+

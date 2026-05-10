@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# yatti-user-del — Remove a YaTTi Shell user and optionally archive data
+set -euo pipefail
+shopt -s inherit_errexit
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+
+declare -r PROG=${0##*/}
+declare -r ARCHIVE_DIR=/var/backups/yatti-shell
+
+_msg() { >&2 printf '%s: %s\n' "$PROG" "$1"; }
+info()    { _msg "$1"; }
+success() { _msg "OK: $1"; }
+die()     { _msg "ERROR: $2"; exit "$1"; }
+
+usage() {
+  cat >&2 <<EOF
+Usage: ${PROG} [-n|--no-archive] <username>
+
+Options:
+  -n, --no-archive  Delete user data without archiving
+
+By default, conversations are archived to ${ARCHIVE_DIR}/ before deletion.
+EOF
+  exit 2
+}
+
+(( EUID == 0 )) || die 1 "Must run as root"
+
+# Parse options
+declare -i ARCHIVE=1
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -n|--no-archive) ARCHIVE=0; shift ;;
+    -h|--help)       usage ;;
+    -*)              die 2 "Unknown option: $1" ;;
+    *)               break ;;
+  esac
+done
+
+(( $# == 1 )) || usage
+declare -r USERNAME=$1
+
+# Validate user exists
+id "$USERNAME" >/dev/null 2>&1 || die 3 "User ${USERNAME@Q} not found"
+
+# ── Archive ───────────────────────────────────────────────────────────────────
+
+declare -r USER_HOME="/home/${USERNAME}"
+declare -r CONV_DIR="${USER_HOME}/conversations"
+
+if (( ARCHIVE )) && [[ -d "$CONV_DIR" ]]; then
+  install -d -m 700 "$ARCHIVE_DIR"
+  declare -- ARCHIVE_FILE
+  ARCHIVE_FILE="${ARCHIVE_DIR}/${USERNAME}-$(date +%Y%m%d-%H%M%S).tar.gz"
+  declare -r ARCHIVE_FILE
+  tar -czf "$ARCHIVE_FILE" -C "$USER_HOME" conversations 2>/dev/null || true
+  chmod 600 "$ARCHIVE_FILE"
+  success "Archived conversations to ${ARCHIVE_FILE}"
+fi
+
+# ── Remove User ───────────────────────────────────────────────────────────────
+
+# Kill any running sessions
+pkill -u "$USERNAME" 2>/dev/null || true
+
+deluser --remove-home "$USERNAME" 2>/dev/null || userdel -r "$USERNAME" 2>/dev/null
+success "Removed user ${USERNAME} and home directory"
+
+#fin

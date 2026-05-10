@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# yatti-shell-launcher — Login shell for YaTTi Shell users
+# Constructs a bwrap namespace sandbox and drops into bash with YaTTi env
+set -euo pipefail
+shopt -s inherit_errexit
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+
+declare -r PROG=${0##*/}
+declare -r SHARE_DIR=/usr/local/share/yatti-shell
+declare -r BIN_DIR="${SHARE_DIR}/bin"
+declare -r CONF_DIR="${SHARE_DIR}/conf"
+
+# Message helpers
+_msg() { >&2 printf '%s: %s\n' "$PROG" "$1"; }
+die()  { _msg "ERROR: $2"; exit "$1"; }
+
+# ── Validate Environment ──────────────────────────────────────────────────────
+
+[[ -d "$BIN_DIR" ]]  || die 1 "Missing ${BIN_DIR} — run yatti-shell-setup first"
+[[ -d "$CONF_DIR" ]] || die 1 "Missing ${CONF_DIR} — run yatti-shell-setup first"
+command -v bwrap >/dev/null || die 1 "bubblewrap (bwrap) not found"
+
+# ── Load API Key ──────────────────────────────────────────────────────────────
+
+declare -- API_KEY=''
+declare -r KEY_FILE="${HOME}/.config/yatti-api/api_key"
+
+if [[ -f "$KEY_FILE" ]]; then
+  API_KEY=$(cat "$KEY_FILE")
+elif [[ -n "${YATTI_API_KEY:-}" ]]; then
+  API_KEY=$YATTI_API_KEY
+fi
+
+if [[ -z "$API_KEY" ]]; then
+  die 2 "No API key found — contact administrator"
+fi
+
+# ── Ensure Conversation Directory ─────────────────────────────────────────────
+
+declare -r CONV_DIR="${HOME}/conversations"
+if [[ ! -d "$CONV_DIR" ]]; then
+  mkdir -p "${CONV_DIR}/general"
+fi
+if [[ ! -d "${CONV_DIR}/general" ]]; then
+  mkdir -p "${CONV_DIR}/general"
+fi
+# Set default conversation if not set
+if [[ ! -L "${CONV_DIR}/.current" ]]; then
+  ln -sf general "${CONV_DIR}/.current"
+fi
+
+# ── Minimal passwd/group for UID resolution ───────────────────────────────────
+
+declare -r ETC_STAGING="${HOME}/.cache/yatti-shell-etc"
+mkdir -p "$ETC_STAGING"
+declare -- REAL_USER
+REAL_USER=$(id -un)
+declare -i REAL_UID REAL_GID
+REAL_UID=$(id -u)
+REAL_GID=$(id -g)
+echo "root:x:0:0:root:/root:/bin/bash" > "${ETC_STAGING}/passwd"
+echo "${REAL_USER}:x:${REAL_UID}:${REAL_GID}:YaTTi User:/home/user:/bin/bash" >> "${ETC_STAGING}/passwd"
+echo "root:x:0:" > "${ETC_STAGING}/group"
+echo "${REAL_USER}:x:${REAL_GID}:" >> "${ETC_STAGING}/group"
+
+# ── Resource Limits ───────────────────────────────────────────────────────────
+
+ulimit -u 200       # max processes
+ulimit -f 102400    # max file size (100 MB in 1K blocks)
+ulimit -n 64        # max open files
+ulimit -t 3600      # max CPU time (1 hour)
+
+# ── Resolve Paths ─────────────────────────────────────────────────────────────
+
+declare -- BASH_BIN CURL_BIN JQ_BIN YATTI_BIN
+BASH_BIN=$(command -v bash)
+CURL_BIN=$(command -v curl)
+JQ_BIN=$(command -v jq)
+YATTI_BIN=$(command -v yatti-api) || YATTI_BIN=/usr/local/bin/yatti-api
+
+[[ -x "$BASH_BIN" ]]  || die 3 "bash not found"
+[[ -x "$CURL_BIN" ]]  || die 3 "curl not found"
+[[ -x "$JQ_BIN" ]]    || die 3 "jq not found"
+[[ -x "$YATTI_BIN" ]] || die 3 "yatti-api not found"
+
+# Resolve DNS config
+declare -- RESOLV_CONF=/etc/resolv.conf
+if [[ -L "$RESOLV_CONF" ]]; then
+  # Follow symlink (Ubuntu uses stub-resolv.conf via systemd-resolved)
+  RESOLV_CONF=$(realpath "$RESOLV_CONF")
+fi
+
+# ── Build bwrap Command ──────────────────────────────────────────────────────
+
+declare -a BWRAP_ARGS=(
+  # /usr/bin — busybox applet symlinks, busybox binary, and env
+  # Self-contained: BIN_DIR has everything yatti-api's PATH needs
+  --ro-bind "$BIN_DIR" /usr/bin
+
+  # /usr/local/bin — core binaries
+  --ro-bind "$BASH_BIN"   /usr/local/bin/bash
+  --ro-bind "$CURL_BIN"   /usr/local/bin/curl
+  --ro-bind "$JQ_BIN"     /usr/local/bin/jq
+  --ro-bind "$YATTI_BIN"  /usr/local/bin/yatti-api
+
+  # Editor config/syntax files (binaries are in BIN_DIR → /usr/bin)
+  --ro-bind /etc/joe        /etc/joe
+  --ro-bind /usr/share/joe  /usr/share/joe
+  --ro-bind /usr/share/nano /usr/share/nano
+
+  # Bash completion library
+  --ro-bind /usr/share/bash-completion /usr/share/bash-completion
+
+  # /bin — symlinks for #!/bin/bash shebangs
+  --symlink /usr/local/bin/bash /bin/bash
+
+  # Shared libraries (required by bash, curl, jq)
+  --ro-bind /lib/x86_64-linux-gnu /lib/x86_64-linux-gnu
+  --ro-bind /lib64               /lib64
+
+  # TLS certificates (required by curl)
+  --ro-bind /etc/ssl /etc/ssl
+
+  # Minimal passwd/group for UID→name resolution
+  --ro-bind "${ETC_STAGING}/passwd" /etc/passwd
+  --ro-bind "${ETC_STAGING}/group"  /etc/group
+
+  # DNS resolver
+  --ro-bind "$RESOLV_CONF" /etc/resolv.conf
+
+  # Shell configuration
+  --ro-bind "$CONF_DIR" /etc/yatti-shell
+
+  # User home (writable)
+  --bind "$HOME" /home/user
+
+  # Pseudo-filesystems
+  --dev  /dev
+  --proc /proc
+  --tmpfs /tmp
+
+  # Namespace isolation
+  --unshare-pid
+  --die-with-parent
+
+  # Working directory and environment
+  --chdir /home/user
+  --setenv HOME        /home/user
+  --setenv PATH        /usr/local/bin:/usr/bin:/bin
+  --setenv TERM        "${TERM:-xterm}"
+  --setenv LANG         C
+  --setenv LC_ALL       C
+  --setenv YATTI_API_KEY "$API_KEY"
+  --setenv YATTI_SHELL  1
+  --setenv USER         "$REAL_USER"
+)
+
+# ── Enter Sandbox ─────────────────────────────────────────────────────────────
+
+exec bwrap "${BWRAP_ARGS[@]}" \
+  /bin/bash --rcfile /etc/yatti-shell/bashrc -i
+
+#fin

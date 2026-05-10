@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# yatti-shell-gate — Routes SSH sessions to shell or SFTP
+# Interactive sessions → bwrap sandbox shell
+# SFTP sessions → sftp-server (read-only, for data export)
+# Everything else → rejected
+set -euo pipefail
+shopt -s inherit_errexit
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+
+declare -r PROG=${0##*/}
+
+case "${SSH_ORIGINAL_COMMAND:-}" in
+  '')
+    # Interactive session → YaTTi shell
+    exec /usr/local/bin/yatti-shell-launcher
+    ;;
+  */sftp-server*|internal-sftp*)
+    # SFTP → read-only sftp-server
+    exec /usr/lib/openssh/sftp-server -R
+    ;;
+  scp\ *)
+    # SCP request
+    # shellcheck disable=SC2086  # intentional word splitting of scp args
+    exec /usr/bin/scp ${SSH_ORIGINAL_COMMAND#scp }
+    ;;
+  *)
+    >&2 printf '%s: Only interactive shell and SFTP/SCP export are allowed.\n' "$PROG"
+    exit 1
+    ;;
+esac
+
+#fin
