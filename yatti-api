@@ -5,7 +5,7 @@ shopt -s inherit_errexit shift_verbose extglob nullglob
 if [[ "${YATTI_TEST_MODE:-0}" != "1" ]]; then
   export PATH=/usr/local/bin:/usr/bin:/bin
 fi
-command -v curl >/dev/null || { >&2 echo "Error: curl required (apt install curl)"; exit 18; }
+command -v curl >/dev/null || { >&2 echo 'Error: curl required (apt install curl)'; exit 18; }
 
 # Script metadata
 declare -r VERSION='1.4.3'
@@ -156,7 +156,6 @@ api_request() {
 
   info "Request: $method ${API_BASE}${endpoint}"
 
-  # Retry loop with exponential backoff
   while ((attempt < MAX_RETRIES)); do
     attempt+=1
 
@@ -502,7 +501,6 @@ QUERY
        if $pt != "" then . + {prompt_template: $pt} else . end' <<< "$options_base")
   fi
 
-  # Build final payload
   json_payload=$(jq -n \
     --arg kb "$kb_name" \
     --arg query "$query_text" \
@@ -514,7 +512,6 @@ QUERY
   # Make query request
   local -- response
   if response=$(api_request POST /query -d "$json_payload"); then
-    # Parse and display response
     if [[ "${OUTPUT_FORMAT:-pretty}" == json ]]; then
       echo "$response" | format_json
     else
@@ -595,7 +592,7 @@ cmd_docs() {
         elif command -v open &> /dev/null; then
           open "$API_BASE"/docs
         else
-          info "Visit ${API_BASE}/docs in your browser"
+          info "Visit $API_BASE/docs in your browser"
         fi
       else
         api_request GET /docs | jq -r '.data.content // .data' 2>/dev/null || api_request GET /docs
@@ -655,7 +652,7 @@ cmd_docs() {
       ;;
 
     *)
-      die 22 "Unknown documentation type: $doc_type" "Available: user, api, technical, list"
+      die 22 "Unknown documentation type: ${doc_type@Q}" "Available: user, api, technical, list"
       ;;
   esac
 }
@@ -833,7 +830,7 @@ cmd_update() {
       rm -f "$temp_file"
     fi
   }
-  trap cleanup_temp_file EXIT INT TERM
+  trap 'cleanup_temp_file $?' EXIT INT TERM
 
   # Check if this is a system-wide installation that will need sudo
   local -- script_dir
@@ -898,7 +895,7 @@ cmd_update() {
       info "Update available: $VERSION → v$latest_version"
       echo
       echo 'Changelog:'
-      echo "$version_response" | jq -r '.data.changelog | to_entries[] | "  v\(.key):",.value.changes[]' 2>/dev/null
+      echo "$version_response" | jq -r '.data.changelog | to_entries[] | "  v\(.key):",.value.changes[]' 2>/dev/null ||:
       echo
       echo "Run '$SCRIPT_NAME update' to install the update"
     else
@@ -935,7 +932,7 @@ cmd_update() {
     fi
     
     # Download new version to temp file (mktemp creates with 600 permissions)
-    temp_file=$(mktemp "${TMPDIR:-/tmp}"/yatti-api.XXXXXX)
+    temp_file=$(mktemp "${TMPDIR:-/tmp}"/yatti-api.XXXXXX) || die 1 'Failed to create temp file'
 
     info 'Downloading new version...'
     if ! curl -sfL "$API_BASE"/client/download -o "$temp_file"; then
