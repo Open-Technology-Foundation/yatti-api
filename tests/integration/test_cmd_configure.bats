@@ -206,10 +206,4 @@ teardown() {
   [[ "$output" -ge 1 ]]
 }
 
-@test "yn function has read timeout configured" {
-  # Verify the yn() function uses -t flag for timeout
-  run grep -E 'read -rt [0-9]+ -n1' ./yatti-api
-  [[ "$status" -eq 0 ]]
-}
-
 #fin

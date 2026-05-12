@@ -665,20 +665,19 @@ scripts/                        # Development scripts
   ├── install-hooks.sh          # Install git hooks
   └── hooks/                    # Git hook templates
       └── pre-commit            # Shellcheck on commit
-tests/                          # Test suite (274 tests)
-  ├── unit/                     # Unit tests (102 tests)
-  │   ├── test_utils.bats       # Utility functions (16 tests)
-  │   ├── test_version_compare.bats  # Version comparison (17 tests)
+tests/                          # Test suite (241 tests)
+  ├── unit/                     # Unit tests (70 tests)
+  │   ├── test_utils.bats       # Utility functions (1 test)
   │   ├── test_validation.bats  # URL/path validation (18 tests)
-  │   ├── test_gpg_verification.bats # GPG signature verification (6 tests)
+  │   ├── test_gpg_verification.bats # GPG signature verification (10 tests)
   │   ├── test_api_key.bats     # API key loading (4 tests)
   │   ├── test_large_payloads.bats   # Large query handling (8 tests)
   │   ├── test_unicode_handling.bats # Unicode/i18n support (15 tests)
   │   └── test_error_resilience.bats # Error handling (14 tests)
-  ├── integration/              # Integration tests (172 tests)
-  │   ├── test_cmd_configure.bats  # Configure command (17 tests)
+  ├── integration/              # Integration tests (171 tests)
+  │   ├── test_cmd_configure.bats  # Configure command (19 tests)
   │   ├── test_cmd_query.bats   # Query command (22 tests)
-  │   ├── test_cmd_users.bats   # Users command (16 tests)
+  │   ├── test_cmd_users.bats   # Users command (20 tests)
   │   ├── test_cmd_docs.bats    # Documentation command (12 tests)
   │   ├── test_cmd_knowledgebases.bats # KB command (10 tests)
   │   ├── test_cmd_update.bats  # Update command (10 tests)
@@ -697,6 +696,15 @@ tests/                          # Test suite (274 tests)
   ├── fixtures/                 # Mock data
   │   └── api_responses.json    # API response fixtures
   └── run_tests.sh              # Test runner
+mcp/                            # Python MCP server (separate sub-project)
+  ├── mcp_server/server.py      # FastMCP wrapper around yatti-api CLI
+  ├── pyproject.toml            # Python package metadata
+  └── install.sh                # MCP install helper
+shell/                          # Bwrap-sandboxed yatti-shell
+  ├── yatti-shell-launcher      # Entry point
+  ├── yatti-shell-gate          # Sandbox gate
+  └── yatti-user-{add,del,list} # User management
+docs/                           # Auxiliary documentation
 ```
 
 ### Setup for Contributors
@@ -730,7 +738,7 @@ See [tests/README.md](tests/README.md) for complete testing documentation.
 
 - ✓ ShellCheck: 0 warnings
 - ✓ BCS (Bash Coding Standard): 100% compliant
-- ✓ Test Coverage: 95%+ (274 tests)
+- ✓ Test Coverage: 95%+ (241 tests)
 - ✓ Security Audit: Passed (URL validation, GPG verification, path traversal prevention)
 
 ### Requirements

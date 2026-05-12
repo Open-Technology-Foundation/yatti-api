@@ -20,7 +20,7 @@ declare -r API_BASE=${YATTI_API_BASE:-https://yatti.id/v1}
 if [[ -n "${YATTI_API_BASE:-}" ]] && [[ "${YATTI_TEST_MODE:-0}" != "1" ]]; then
   [[ "$YATTI_API_BASE" =~ ^https://yatti\.id(/|$) ]] || {
     >&2 echo 'Error: YATTI_API_BASE must be https://yatti.id'
-    exit 1
+    exit 22
   }
 fi
 declare -r CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}"/"$SCRIPT_NAME"
@@ -36,7 +36,7 @@ declare -ri CURL_CONNECT_TIMEOUT=${YATTI_CONNECT_TIMEOUT:-10}
 declare -ri CURL_MAX_TIME=${YATTI_TIMEOUT:-60}
 
 # Global variables
-declare -i VERBOSE=${VERBOSE:-0} PROMPT=1
+declare -i VERBOSE=${VERBOSE:-0}
 # Colour definitions
 if [[ -t 1 && -t 2 ]]; then
   declare -r RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' BOLD_CYAN=$'\033[1;36m' NC=$'\033[0m'
@@ -57,7 +57,6 @@ _msg() {
 }
 
 # Conditional output based on verbosity
-vecho() { ((VERBOSE)) || return 0; _msg "$@"; }
 success() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
 warn() { >&2 _msg "$@"; }
 info() { ((VERBOSE)) || return 0; >&2 _msg "$@"; }
@@ -72,14 +71,6 @@ noarg() {
   fi
 }
 
-# Yes/no prompt (60s timeout, defaults to 'no' on timeout)
-yn() {
-  ((PROMPT)) || return 0
-  >&2 read -rt 60 -n1 -p "$SCRIPT_NAME: ${YELLOW}$1${NC} y/n " || true
-  >&2 echo
-  [[ ${REPLY,,} == y ]]
-}
-
 # Validate URL path segment (prevent path traversal and injection)
 # Allowed: alphanumeric, dot, dash, underscore
 # Rejects: slashes, query strings, spaces, null bytes
@@ -92,7 +83,10 @@ validate_path_segment() {
   fi
 }
 
-# Validate query string parameter
+# Validate a URL query-string parameter value.
+# Args: $1=value, $2=name (default 'parameter'), $3=type (integer|string, default string).
+# integer: digits only (non-negative). string: [a-zA-Z0-9._-] same set as validate_path_segment.
+# Exits with status 22 (EINVAL) on validation failure.
 validate_query_param() {
   local -- value=$1 name=${2:-parameter} type=${3:-string}
   case "$type" in
@@ -109,7 +103,8 @@ validate_query_param() {
 # Core functions
 # --------------------------------------------------------------------------------
 
-# Load API key
+# Load API key. Precedence: $API_KEY_FILE > $YATTI_API_KEY env > empty string.
+# Returns the key on stdout (empty string if unconfigured).
 load_api_key() {
   if [[ -f "$API_KEY_FILE" ]]; then
     cat "$API_KEY_FILE"
@@ -120,13 +115,13 @@ load_api_key() {
   fi
 }
 
-# Save API key
+# Save API key to $API_KEY_FILE with mode 0600 (config dir mode 0700).
+# Uses install(1) to create the file atomically before write to avoid a
+# permissions race against concurrent readers.
 save_api_key() {
   local -- api_key=$1
-  # Ensure config directory exists
   #shellcheck disable=SC2174  # -m only applies to deepest dir, which is intentional
   mkdir -p -m 700 "$CONFIG_DIR"
-  # Atomic creation with correct permissions to prevent race condition
   install -m 600 /dev/null "$API_KEY_FILE"
   echo "$api_key" > "$API_KEY_FILE" || die 5 "Failed to write API key to ${API_KEY_FILE@Q}"
   success "API key saved to ${API_KEY_FILE@Q}"
@@ -139,7 +134,12 @@ is_retryable_error() {
   ((http_code == 429)) || ((http_code >= 500))
 }
 
-# Make API request with retry logic
+# Make API request with exponential-backoff retry on transient failures.
+# Args: $1=HTTP method, $2=endpoint path (e.g. /status), $3..=extra curl args.
+# Retries up to $MAX_RETRIES times (backoff 1s/2s/4s/...) on curl-level
+# connection failures and on retryable HTTP codes (429, 5xx).
+# On 2xx prints the response body to stdout and returns 0; on failure prints
+# the JSON error message (or raw body) to stderr and returns 1.
 api_request() {
   local -- method=$1 endpoint=$2
   shift 2
@@ -154,7 +154,7 @@ api_request() {
   headers+=(-H 'Accept: application/json')
   [[ -z "$api_key" ]] || headers+=(-H "X-API-Key: $api_key")
 
-  ((VERBOSE==0)) || info "Request: $method ${API_BASE}${endpoint}"
+  info "Request: $method ${API_BASE}${endpoint}"
 
   # Retry loop with exponential backoff
   while ((attempt < MAX_RETRIES)); do
@@ -172,7 +172,7 @@ api_request() {
         "${API_BASE}$endpoint" 2>/dev/null) || curl_exit=$?
 
     # Check for curl-level failures (connection errors, timeouts)
-    if ((curl_exit != 0)) && [[ -z "$response" || "$response" == *"__HTTP_CODE__000"* ]]; then
+    if ((curl_exit)) && [[ -z "$response" || "$response" == *"__HTTP_CODE__000"* ]]; then
       if ((attempt < MAX_RETRIES)); then
         warn "Connection failed (curl exit $curl_exit), retry $attempt/$MAX_RETRIES in ${backoff}s..."
         sleep "$backoff"
@@ -200,7 +200,7 @@ api_request() {
       # Non-retryable error or max retries exceeded
       if ((VERBOSE)) || ((http_code >= 400)); then
         error "HTTP $http_code"
-        [[ -n "$response" ]] && jq -r '.error.message // .message // .' <<< "$response" 2>/dev/null >&2 || echo "$response" >&2
+        [[ -n "$response" ]] && >&2 jq -r '.error.message // .message // .' <<< "$response" 2>/dev/null || >&2 echo "$response"
       fi
       return 1
     fi
@@ -340,7 +340,7 @@ cmd_knowledgebases() {
     get)
       [[ -n "$kb_name" ]] || die 2 'Knowledgebase name required'
       validate_path_segment "$kb_name" 'knowledgebase name'
-      # API now returns long_description directly
+      # Returns full record (name, description, long_description, metadata)
       api_request GET /knowledgebases/"$kb_name" | format_json
       ;;
     sync)
@@ -365,7 +365,7 @@ cmd_query() {
     -K|--knowledgebase)
       noarg "$@"; shift; kb_name=$1 ;;
     -q|--query)
-      # Allow "-" as stdin indicator, otherwise validate
+      # Skip noarg() because "-" (stdin indicator) is a valid argument value
       if (($# < 2)); then
         die 2 "Missing argument for option ${1@Q}"
       fi
@@ -717,37 +717,12 @@ cmd_version() {
   fi
 }
 
-# Version comparison function
-version_compare() {
-  # Compare two version strings
-  # Returns: 0 if equal, 1 if $1 > $2, 2 if $1 < $2
-  local -- v1=$1
-  local -- v2=$2
-  local -a V1=() V2=()
-
-  # Split versions into arrays
-  IFS='.' read -ra V1 <<< "$v1"
-  IFS='.' read -ra V2 <<< "$v2"
-  
-  # Pad arrays to same length
-  local -i max_len=$((${#V1[@]} > ${#V2[@]} ? ${#V1[@]} : ${#V2[@]}))
-  local -i num1 num2 i
-  for ((i=0; i<max_len; i+=1)); do
-    num1=${V1[i]:-0}
-    num2=${V2[i]:-0}
-    
-    if ((num1 > num2)); then
-      return 1
-    elif ((num1 < num2)); then
-      return 2
-    fi
-  done
-  
-  return 0
-}
-
-# GPG signature verification for updates
-# Returns: 0=verified, 1=unavailable (proceed with warning), 2=failed (abort)
+# Import GPG public key for update signature verification.
+# Caches the key in $CONFIG_DIR/pubkey.asc for 7 days; refreshes from
+# $API_BASE/client/pubkey when stale or missing. Enforces fingerprint pinning
+# against $GPG_KEY_FINGERPRINT to defeat MITM key substitution.
+# Returns: 0=key imported and fingerprint verified, 1=key unavailable (soft fail),
+#          2=fingerprint mismatch (hard fail, do not proceed)
 import_update_pubkey() {
   local -- pubkey_cache="$CONFIG_DIR"/pubkey.asc
   local -- imported_fp
@@ -797,6 +772,11 @@ import_update_pubkey() {
   return 1
 }
 
+# Verify GPG signature of downloaded update against pinned public key.
+# Downloads detached signature from $API_BASE/client/download.sig and validates
+# it against $script_file using the imported key (via import_update_pubkey).
+# Returns: 0=signature verified, 1=verification unavailable (proceed with warning),
+#          2=verification failed or fingerprint mismatch (abort update)
 verify_update_signature() {
   local -- script_file=$1
   local -- sig_file="$script_file".sig
@@ -899,7 +879,7 @@ cmd_update() {
   local -- version_response
   version_response=$(api_request GET "/client/check-update?version=$VERSION" 2>/dev/null)
   
-  [[ -n "$version_response" ]] || die 1 'Failed to check for updates'
+  [[ -n "$version_response" ]] || die 23 'Failed to check for updates'
 
   # Extract version info efficiently (single jq call instead of two)
   local -i update_available
@@ -908,7 +888,7 @@ cmd_update() {
     jq -r '[(if .data.update_available then "1" else "0" end), .data.latest_version // ""] | @tsv' <<< "$version_response"
   )
   
-  if ((update_available == 0 && force == 0)); then
+  if ((!update_available && !force)); then
     success "You are running the latest version ($VERSION)"
     return 0
   fi
@@ -960,19 +940,19 @@ cmd_update() {
     info 'Downloading new version...'
     if ! curl -sfL "$API_BASE"/client/download -o "$temp_file"; then
       rm -f "$temp_file"
-      die 1 'Failed to download update'
+      die 23 'Failed to download update'
     fi
-    
+
     # Verify download
     if [[ ! -s "$temp_file" ]]; then
       rm -f "$temp_file"
-      die 1 'Downloaded file is empty'
+      die 7 'Downloaded file is empty'
     fi
-    
+
     # Check if it's a valid bash script
     if ! head -1 "$temp_file" | grep -q '^#!/'; then
       rm -f "$temp_file"
-      die 1 'Downloaded file is not a valid bash script'
+      die 10 'Downloaded file is not a valid bash script'
     fi
     
     # Make executable with proper permissions
@@ -986,11 +966,11 @@ cmd_update() {
       0) info 'GPG signature verified' ;;
       1) warn 'Signature verification unavailable - proceeding without verification' ;;
       2) rm -f "$temp_file"
-         die 1 'GPG signature verification failed - update aborted for security' ;;
+         die 11 'GPG signature verification failed - update aborted for security' ;;
     esac
 
     # Security check: refuse to update if script path is a symlink
-    [[ ! -L "$SCRIPT_PATH" ]] || die 1 "Cannot update: $SCRIPT_PATH is a symlink"
+    [[ ! -L "$SCRIPT_PATH" ]] || die 11 "Cannot update: $SCRIPT_PATH is a symlink"
 
     # Handle update based on permissions
     if ((needs_sudo)); then
@@ -1027,7 +1007,7 @@ cmd_update() {
           >&2 echo "   export PATH=\"\$HOME/bin:\$PATH\""
         fi
         rm -f "$temp_file"
-        die 1 'Update failed'
+        die 11 'Update failed'
       fi
       return 0
     fi

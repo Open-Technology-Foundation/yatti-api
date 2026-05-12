@@ -86,3 +86,4 @@ venv/
 # GPG signing artifacts
 *.sig
 *-pubkey.asc
+.archive/
