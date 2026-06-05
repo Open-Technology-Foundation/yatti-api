@@ -1,0 +1,335 @@
+{
+  "status": {
+    "success": {
+      "status": "ok",
+      "version": "1.0.0",
+      "timestamp": "2025-01-08T12:00:00Z",
+      "uptime": 86400
+    }
+  },
+  "status_health": {
+    "success": {
+      "status": "healthy",
+      "database": "connected",
+      "redis": "connected"
+    }
+  },
+  "status_info": {
+    "success": {
+      "version": "1.0.0",
+      "environment": "production",
+      "models_available": ["gpt-5.1", "claude-haiku-4-5", "claude-opus-4-1", "claude-sonnet-4-5"]
+    }
+  },
+  "knowledgebases": {
+    "success": {
+      "data": {
+        "knowledgebases": [
+          {
+            "name": "seculardharma",
+            "description": "Secular Dharma teachings and articles",
+            "documents": 150,
+            "size_mb": 12.5
+          },
+          {
+            "name": "jawawa",
+            "description": "Jakarta Post news archives",
+            "documents": 50000,
+            "size_mb": 2500.0
+          },
+          {
+            "name": "test_kb",
+            "description": "Test knowledgebase",
+            "documents": 10,
+            "size_mb": 1.0
+          }
+        ]
+      }
+    }
+  },
+  "knowledgebase_get": {
+    "success": {
+      "data": {
+        "name": "seculardharma",
+        "description": "Secular Dharma teachings and articles",
+        "documents": 150,
+        "size_mb": 12.5,
+        "last_updated": "2025-01-01T00:00:00Z"
+      }
+    },
+    "not_found": {
+      "error": {
+        "code": 404,
+        "message": "Knowledgebase not found"
+      }
+    }
+  },
+  "query": {
+    "success": {
+      "data": {
+        "query_id": "q_abc123def456",
+        "response": "Mindfulness is the practice of maintaining a moment-by-moment awareness of our thoughts, feelings, bodily sensations, and surrounding environment.",
+        "metadata": {
+          "cached": false,
+          "model": "gpt-5.1",
+          "temperature": 0.0,
+          "tokens_used": 245,
+          "processing_time_ms": 1250
+        },
+        "contexts": [
+          {
+            "source": "mindfulness_basics.md",
+            "content": "Mindfulness meditation involves paying attention to the present moment without judgment.",
+            "score": 0.95
+          },
+          {
+            "source": "meditation_guide.md",
+            "content": "Through mindfulness practice, we develop awareness of our mental patterns.",
+            "score": 0.88
+          }
+        ]
+      }
+    },
+    "context_only": {
+      "data": {
+        "query_id": "q_context123",
+        "contexts": [
+          {
+            "source": "test_doc.md",
+            "content": "This is the first context segment.",
+            "score": 0.92
+          },
+          {
+            "source": "test_doc2.md",
+            "content": "This is the second context segment.",
+            "score": 0.85
+          }
+        ]
+      }
+    },
+    "cached": {
+      "data": {
+        "query_id": "q_cached789",
+        "response": "This response was retrieved from cache.",
+        "metadata": {
+          "cached": true,
+          "model": "gpt-5.1",
+          "temperature": 0.0,
+          "tokens_used": 0,
+          "processing_time_ms": 50
+        },
+        "contexts": []
+      }
+    },
+    "error_missing_kb": {
+      "error": {
+        "code": 404,
+        "message": "Knowledgebase not found"
+      }
+    },
+    "error_timeout": {
+      "error": {
+        "code": 504,
+        "message": "Query timeout - try increasing timeout value"
+      }
+    },
+    "error_unauthorized": {
+      "error": {
+        "code": 401,
+        "message": "Invalid or missing API key"
+      }
+    }
+  },
+  "history": {
+    "success": {
+      "data": {
+        "queries": [
+          {
+            "id": "q_history001",
+            "knowledgebase": "seculardharma",
+            "query": "What is mindfulness?",
+            "status": "completed",
+            "created_at": "2025-01-08T10:00:00Z"
+          },
+          {
+            "id": "q_history002",
+            "knowledgebase": "jawawa",
+            "query": "Latest news",
+            "status": "completed",
+            "created_at": "2025-01-08T09:30:00Z"
+          }
+        ],
+        "total": 2
+      }
+    }
+  },
+  "get_query": {
+    "success": {
+      "data": {
+        "id": "q_abc123def456",
+        "knowledgebase": "seculardharma",
+        "query": "What is mindfulness?",
+        "response": "Detailed response here...",
+        "status": "completed",
+        "created_at": "2025-01-08T10:00:00Z",
+        "metadata": {
+          "model": "gpt-5.1",
+          "tokens_used": 245
+        }
+      }
+    },
+    "not_found": {
+      "error": {
+        "code": 404,
+        "message": "Query not found"
+      }
+    }
+  },
+  "update_check": {
+    "no_update": {
+      "data": {
+        "current_version": "1.4.0",
+        "latest_version": "1.4.0",
+        "update_available": false
+      }
+    },
+    "update_available": {
+      "data": {
+        "current_version": "1.4.0",
+        "latest_version": "1.4.1",
+        "update_available": true,
+        "changelog": {
+          "1.4.1": {
+            "release_date": "2025-01-15",
+            "changes": [
+              "Added new query features",
+              "Improved performance",
+              "Bug fixes"
+            ]
+          }
+        },
+        "download_url": "https://yatti.id/v1/client/download"
+      }
+    }
+  },
+  "docs": {
+    "user": {
+      "data": {
+        "content": "# YaTTi User Guide\n\nWelcome to YaTTi...",
+        "format": "markdown"
+      }
+    },
+    "api": {
+      "data": {
+        "content": "# API Documentation\n\n## Endpoints\n\n### /query\n...",
+        "format": "markdown"
+      }
+    },
+    "technical": {
+      "data": {
+        "content": "# Technical Documentation\n\n## Architecture\n...",
+        "format": "markdown"
+      }
+    }
+  },
+  "errors": {
+    "400_bad_request": {
+      "error": {
+        "code": 400,
+        "message": "Bad Request: Invalid parameters"
+      }
+    },
+    "401_unauthorized": {
+      "error": {
+        "code": 401,
+        "message": "Unauthorized: Invalid or missing API key"
+      }
+    },
+    "404_not_found": {
+      "error": {
+        "code": 404,
+        "message": "Not Found: Resource does not exist"
+      }
+    },
+    "429_rate_limit": {
+      "error": {
+        "code": 429,
+        "message": "Rate limit exceeded. Please try again later."
+      }
+    },
+    "500_server_error": {
+      "error": {
+        "code": 500,
+        "message": "Internal Server Error: Please try again later"
+      }
+    },
+    "503_unavailable": {
+      "error": {
+        "code": 503,
+        "message": "Service Unavailable: Maintenance in progress"
+      }
+    }
+  },
+  "users": {
+    "list": {
+      "data": {
+        "users": [
+          {"id": "user_001", "email": "admin@example.com", "role": "admin", "created_at": "2025-01-01T00:00:00Z"},
+          {"id": "user_002", "email": "user@example.com", "role": "user", "created_at": "2025-01-02T00:00:00Z"}
+        ],
+        "total": 2
+      }
+    },
+    "get": {
+      "success": {
+        "data": {
+          "id": "user_001",
+          "email": "admin@example.com",
+          "role": "admin",
+          "created_at": "2025-01-01T00:00:00Z"
+        }
+      },
+      "not_found": {
+        "error": {"code": 404, "message": "User not found"}
+      }
+    },
+    "create": {
+      "success": {
+        "data": {
+          "id": "user_new",
+          "email": "new@example.com",
+          "role": "user",
+          "created_at": "2025-01-08T12:00:00Z"
+        }
+      },
+      "invalid": {
+        "error": {"code": 400, "message": "Invalid user data"}
+      }
+    },
+    "update": {
+      "success": {
+        "data": {
+          "id": "user_001",
+          "email": "updated@example.com",
+          "role": "admin",
+          "updated_at": "2025-01-08T12:00:00Z"
+        }
+      }
+    },
+    "delete": {
+      "success": {
+        "data": {"message": "User deleted successfully"}
+      }
+    }
+  },
+  "knowledgebases_sync": {
+    "success": {
+      "data": {
+        "synced": 3,
+        "added": ["new_kb"],
+        "removed": [],
+        "unchanged": ["seculardharma", "jawawa"]
+      }
+    }
+  }
+}
