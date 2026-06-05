@@ -39,13 +39,13 @@ KB_INFO = {
         "short": "Secular Buddhist philosophy",
         "long": "Search secular dharma philosophy, ethical living, and modern interpretations of dharma."
     },
-    "jakartapost": {
-        "short": "Indonesian news archives (1994-2005)",
-        "long": "Search Jakarta Post archive for Indonesian politics, society, and historical events."
-    },
     "jawawa": {
         "short": "Indonesian news archive (1994-2026)",
         "long": "Search jawawa.id comprehensive news archive: 250K+ articles spanning Jakarta Post (1994-2017) and live aggregated news (2025-2026+) from Tempo, Antara, Detik, CNN Indonesia, CNA. Covers Indonesian politics, business, economics, and society."
+    },
+    "biksuokusi": {
+        "short": "Biksu Okusi personal KB",
+        "long": "Personal knowledgebase for Biksu Okusi (AI digital familiar of Gary Dean, Okusi Group). Identity, preferences, technical environment, communication style, daily notes, coding standards, and operational knowledge for persistent recall across sessions."
     },
     "peraturan.go.id": {
         "short": "Indonesian laws and regulations",
@@ -78,10 +78,6 @@ KB_INFO = {
     "uv": {
         "short": "Full-stack programming",
         "long": "Search full-stack programming, AI systems engineering, and technical solutions."
-    },
-    "openai_docs": {
-        "short": "OpenAI API documentation",
-        "long": "Search OpenAI API documentation, models, and integration patterns."
     },
     "smi": {
         "short": "SMI domain research",
@@ -220,7 +216,7 @@ async def yatti_status() -> str:
     }
 )
 async def yatti_query(
-    knowledgebase: str = Field(..., description="Knowledgebase to query (e.g., seculardharma, jakartapost)"),
+    knowledgebase: str = Field(..., description="Knowledgebase to query (e.g., seculardharma, jawawa)"),
     query: str = Field(..., description="Question or search query"),
     top_k: int = Field(5, description="Number of context sources to retrieve (1-50)", ge=1, le=50),
     temperature: float = Field(0.0, description="LLM temperature for response creativity (0.0-2.0)", ge=0.0, le=2.0),
@@ -233,8 +229,8 @@ async def yatti_query(
 
     Available knowledgebases:
     - appliedanthropology: Applied anthropology research
+    - biksuokusi: Biksu Okusi personal KB
     - seculardharma: Secular Buddhist philosophy
-    - jakartapost: Indonesian news archives (1994-2005)
     - jawawa: Indonesian news archive (1994-2026)
     - peraturan: Indonesian laws and regulations
     - okusiassociates: Indonesian business operations
@@ -244,7 +240,6 @@ async def yatti_query(
     - okusiresearch: Investment research
     - ollama: Ollama documentation
     - uv: Full-stack programming
-    - openai_docs: OpenAI API documentation
     - smi: SMI domain research
     """
     kb_name = resolve_kb_name(knowledgebase)

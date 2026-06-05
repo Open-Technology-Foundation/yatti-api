@@ -356,9 +356,11 @@ cmd_knowledgebases() {
 cmd_query() {
   local -- kb_name='' query_text='' query_file='' temperature='0.0' model='claude-sonnet-4-6'
   local -i force_refresh=0 context_only=0
-  local -i cache_ttl=86400
+  # Numeric options are kept as strings (not -i) so malformed input is rejected
+  # with a clear message below instead of crashing at assignment under set -u.
+  local -- cache_ttl=86400
   local -- max_tokens='' prompt_template=''
-  local -i top_k=5 context_scope=3 timeout=60
+  local -- top_k=5 context_scope=3 timeout=60
 
   while (($#)); do case $1 in
     -K|--knowledgebase)
@@ -410,7 +412,7 @@ Options:
   -f, --force-refresh        Skip cache and force new query
   --cache-ttl SECONDS        Cache TTL in seconds (default: $cache_ttl)
   --timeout SECONDS          Query timeout in seconds (default: 60, max: 600)
-                             Use higher values for large knowledgebases like jakartapost
+                             Use higher values for large knowledgebases like jawawa
 
 Available models: All latest LLMs from OpenAI, Anthropic, and Google
 QUERY
@@ -435,6 +437,7 @@ QUERY
   
   # Validate required parameters
   [[ -n "$kb_name" ]] || die 2 'Knowledgebase name required' "Usage: $SCRIPT_NAME query -K <knowledgebase> -q <query>"
+  validate_path_segment "$kb_name" 'knowledgebase name'
 
   # Handle different query input methods
   if [[ -n "$query_file" ]]; then
@@ -465,9 +468,31 @@ QUERY
   fi
 
   # Auto-suggest higher timeout for large knowledgebases
-  if [[ "$kb_name" == jakartapost ]] && ((timeout < 300)); then
-    info 'Note: jakartapost is a large knowledgebase. Consider using --timeout 300 for better results.'
+  if [[ "$kb_name" == jawawa ]] && ((timeout < 300)); then
+    info 'Note: jawawa is a large knowledgebase. Consider using --timeout 300 for better results.'
   fi
+
+  # Validate numeric options before building the JSON payload: clear errors
+  # instead of cryptic bash-arithmetic or jq failures. Leading zeros are
+  # rejected so each value is a valid JSON number literal for jq --argjson.
+  [[ $top_k =~ ^(0|[1-9][0-9]*)$ ]] \
+    || die 22 "Invalid --top-k ${top_k@Q}: must be a non-negative integer"
+  [[ $context_scope =~ ^(0|[1-9][0-9]*)$ ]] \
+    || die 22 "Invalid --context-scope ${context_scope@Q}: must be a non-negative integer"
+  [[ $cache_ttl =~ ^(0|[1-9][0-9]*)$ ]] \
+    || die 22 "Invalid --cache-ttl ${cache_ttl@Q}: must be a non-negative integer"
+  [[ $timeout =~ ^(0|[1-9][0-9]*)$ ]] \
+    || die 22 "Invalid --timeout ${timeout@Q}: must be a non-negative integer"
+  ((timeout >= 1 && timeout <= 600)) \
+    || die 22 "Invalid --timeout ${timeout@Q}: must be 1..600 seconds"
+  [[ -z $max_tokens || $max_tokens =~ ^[1-9][0-9]*$ ]] \
+    || die 22 "Invalid --max-tokens ${max_tokens@Q}: must be a positive integer"
+  # Temperature is a float; use bc for the range check (BCS0506). The regex
+  # guarantees a non-negative number, so only the upper bound needs checking.
+  [[ $temperature =~ ^(0|[1-9][0-9]*)(\.[0-9]+)?$ ]] \
+    || die 22 "Invalid --temperature ${temperature@Q}: must be a number"
+  (( $(bc -l <<<"$temperature <= 2") )) \
+    || die 22 "Invalid --temperature ${temperature@Q}: must be 0.0..2.0"
 
   # Build JSON payload using jq to prevent injection
   local -- json_payload
@@ -679,7 +704,7 @@ Commands:
 
 Query Examples:
   $SCRIPT_NAME query seculardharma "What is mindfulness?"
-  $SCRIPT_NAME query -K jakartapost -q "Who is Soeharto?"
+  $SCRIPT_NAME query -K jawawa -q "Who is Soeharto?"
   $SCRIPT_NAME query -K ollama -q "Explain LLMs" --model gpt-5.2 --top-k 10
   $SCRIPT_NAME query -K wikipedia -q "Python programming" -c  # Context only
   $SCRIPT_NAME query -K arxiv -q "Quantum computing" -p scholarly -M 2000

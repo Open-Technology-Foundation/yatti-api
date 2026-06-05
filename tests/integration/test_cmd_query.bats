@@ -185,12 +185,76 @@ teardown() {
 
 # Large knowledgebase warning test
 
-@test "query command suggests higher timeout for jakartapost" {
+@test "query command suggests higher timeout for jawawa" {
   set_mock_curl_response "$(jq -c '.query.success' "$FIXTURES_FILE")" "200"
 
-  run ./yatti-api query -K jakartapost -q "test"
+  run ./yatti-api query -K jawawa -q "test"
   [[ "$output" == *"large knowledgebase"* ]]
   [[ "$output" == *"timeout 300"* ]]
+}
+
+# Numeric and KB-name validation (clear errors instead of cryptic crashes)
+
+@test "query rejects non-numeric --top-k" {
+  run ./yatti-api query -K test_kb -q "test" -k abc
+  [[ "$status" -eq 22 ]]
+  [[ "$output" == *"--top-k"* ]]
+  [[ "$output" == *"non-negative integer"* ]]
+}
+
+@test "query rejects decimal --top-k" {
+  run ./yatti-api query -K test_kb -q "test" -k 2.5
+  [[ "$status" -eq 22 ]]
+}
+
+@test "query rejects leading-zero --top-k (invalid JSON literal)" {
+  run ./yatti-api query -K test_kb -q "test" -k 010
+  [[ "$status" -eq 22 ]]
+}
+
+@test "query rejects non-numeric --temperature" {
+  run ./yatti-api query -K test_kb -q "test" -t abc
+  [[ "$status" -eq 22 ]]
+  [[ "$output" == *"--temperature"* ]]
+}
+
+@test "query rejects --temperature above 2.0" {
+  run ./yatti-api query -K test_kb -q "test" -t 5
+  [[ "$status" -eq 22 ]]
+  [[ "$output" == *"--temperature"* ]]
+  [[ "$output" == *"2.0"* ]]
+}
+
+@test "query rejects --timeout above documented max 600" {
+  run ./yatti-api query -K test_kb -q "test" --timeout 9999
+  [[ "$status" -eq 22 ]]
+  [[ "$output" == *"600"* ]]
+}
+
+@test "query rejects invalid --max-tokens" {
+  run ./yatti-api query -K test_kb -q "test" -M 0x10
+  [[ "$status" -eq 22 ]]
+  [[ "$output" == *"--max-tokens"* ]]
+}
+
+@test "query rejects knowledgebase name with disallowed characters" {
+  run ./yatti-api query -K "bad/name" -q "test"
+  [[ "$status" -eq 22 ]]
+  [[ "$output" == *"disallowed characters"* ]]
+}
+
+@test "query accepts dotted knowledgebase name (peraturan.go.id)" {
+  set_mock_curl_response "$(jq -c '.query.success' "$FIXTURES_FILE")" "200"
+
+  run ./yatti-api query -K peraturan.go.id -q "test"
+  [[ "$status" -eq 0 ]]
+}
+
+@test "query accepts valid numeric options at their bounds" {
+  set_mock_curl_response "$(jq -c '.query.success' "$FIXTURES_FILE")" "200"
+
+  run ./yatti-api query -K test_kb -q "test" -k 5 -t 2.0 --timeout 600 -s 3
+  [[ "$status" -eq 0 ]]
 }
 
 #fin

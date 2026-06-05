@@ -31,7 +31,7 @@ Run `yatti-api kb list` for the complete list, or `kb list --long` for full desc
 | Knowledgebase | Description |
 |---------------|-------------|
 | seculardharma | Buddhist philosophy and mindfulness |
-| jakartapost | Indonesian news archive (use `--timeout 300`) |
+| jawawa | Indonesian news archive (use `--timeout 300`) |
 | peraturan.go.id | Indonesian laws and regulations |
 | appliedanthropology | Anthropology research and practice |
 | prosocial.world | Social evolution and cooperation |
@@ -60,7 +60,7 @@ Run `yatti-api kb list` for the complete list, or `kb list --long` for full desc
 
 ```bash
 # Current Indonesian news and analysis
-yatti-api query jakartapost "Outline the economic conditions in Indonesian in 1997."
+yatti-api query jawawa "Outline the economic conditions in Indonesian in 1997."
 
 # Indonesian laws and regulations
 yatti-api query peraturan.go.id "What are the current requirements for foreign direct investment?"
@@ -90,7 +90,7 @@ yatti-api query seculardharma "What is the difference between concentration and 
 
 ```bash
 # Use more context sources
-yatti-api query jakartapost "Soeharto's legacy" --top-k 50  --timeout 300
+yatti-api query jawawa "Soeharto's legacy" --top-k 50  --timeout 300
 
 # Scholarly writing style with extended response
 yatti-api query appliedanthropology "participant observation" -p scholarly -M 2000
@@ -99,7 +99,7 @@ yatti-api query appliedanthropology "participant observation" -p scholarly -M 20
 yatti-api query peraturan.go.id "company formation" --context-only
 ```
 
-**Note:** jakartapost is a very large knowledgebase - use longer timeouts for complex queries.
+**Note:** jawawa is a very large knowledgebase - use longer timeouts for complex queries.
 
 ---
 
@@ -157,7 +157,7 @@ and metacognition in Buddhist psychology?
 EOF
 
 # Multi-paragraph with context
-yatti-api query jakartapost -q - <<'EOF'
+yatti-api query jawawa -q - <<'EOF'
 I'm researching Indonesian economic history for an academic paper.
 Please provide a comprehensive analysis of:
 
@@ -188,7 +188,7 @@ cat my_question.txt | yatti-api query -K seculardharma
 echo "Explain the concept of dependent origination" | yatti-api query -K seculardharma
 
 # From command output
-./generate_query.sh | yatti-api query -K jakartapost
+./generate_query.sh | yatti-api query -K jawawa
 ```
 
 #### Method 4: Traditional Command-line (Backward Compatible)
@@ -200,7 +200,7 @@ echo "Explain the concept of dependent origination" | yatti-api query -K secular
 yatti-api query seculardharma "What is mindfulness?"
 
 # Flag-based (explicit)
-yatti-api query -K jakartapost -q "Indonesian economic development"
+yatti-api query -K jawawa -q "Indonesian economic development"
 
 # With options
 yatti-api query -K appliedanthropology -q "ethnographic methods" \
@@ -225,7 +225,7 @@ EOF
 while IFS= read -r query; do
   if [[ "$query" != "---" ]] && [[ -n "$query" ]]; then
     echo "Query: $query"
-    echo "$query" | yatti-api query jakartapost -q -
+    echo "$query" | yatti-api query jawawa -q -
     echo "---"
   fi
 done < queries.txt
@@ -275,7 +275,7 @@ The tool provides automatic feedback for large queries:
 
 ```bash
 # For very large queries
-yatti-api query jakartapost -Q large_query.txt --timeout 300
+yatti-api query jawawa -Q large_query.txt --timeout 300
 ```
 
 #### Summary
@@ -516,7 +516,7 @@ yatti-api kb sync                    # Sync from filesystem (admin)
 ```bash
 yatti-api history                    # Last 20 queries
 yatti-api history 50                 # Last 50 queries
-yatti-api history 20 jakartapost     # Last 20 from specific KB
+yatti-api history 20 jawawa     # Last 20 from specific KB
 yatti-api get-query q_abc123         # Get specific query by ID
 ```
 
@@ -628,8 +628,8 @@ yatti-api configure
 **Timeouts on large knowledgebases:**
 
 ```bash
-# Use longer timeout for jakartapost
-yatti-api query jakartapost "your query" --timeout 300
+# Use longer timeout for jawawa
+yatti-api query jawawa "your query" --timeout 300
 ```
 
 **Rate limiting or server errors (429, 5xx):**
@@ -774,7 +774,7 @@ yatti-api query appliedanthropology -Q research_question.txt \
   --prompt-template scholarly --max-tokens 3000
 
 # Multiple sources with deep context
-yatti-api query jakartapost -q "Indonesian history" \
+yatti-api query jawawa -q "Indonesian history" \
   --top-k 20 --context-scope 5 --timeout 300
 ```
 
@@ -810,7 +810,7 @@ cat research_paper.txt | yatti-api query appliedanthropology -q - \
 
 ### Performance Tips
 
-- Use `--timeout 300` for large knowledgebases (jakartapost)
+- Use `--timeout 300` for large knowledgebases (jawawa)
 - Use `--top-k 15-20` for comprehensive research
 - Use `--context-only` to get just the sources
 - Use `--cache-ttl 0` to force fresh results

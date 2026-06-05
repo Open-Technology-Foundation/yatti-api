@@ -246,7 +246,7 @@ mock_api_knowledgebases_response() {
         "description": "Secular Dharma teachings"
       },
       {
-        "name": "jakartapost",
+        "name": "jawawa",
         "description": "Jakarta Post archives"
       }
     ]
