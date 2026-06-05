@@ -317,7 +317,7 @@ yatti-api query jawawa -Q large_query.txt --timeout 300
 - **Prompt templates** - scholarly, technical, conversational, concise, analytical
 - **Token limits** - Control response length
 - **Context-only mode** - Retrieve sources without AI interpretation
-- **Timeout control** - Adjust processing time limits (60-600 seconds)
+- **Timeout control** - Adjust processing time limits (1-600 seconds, default 60)
 
 ### Knowledgebase Management
 - List available knowledgebases with `--long` for full descriptions
@@ -516,7 +516,7 @@ yatti-api kb sync                    # Sync from filesystem (admin)
 ```bash
 yatti-api history                    # Last 20 queries
 yatti-api history 50                 # Last 50 queries
-yatti-api history 20 jawawa     # Last 20 from specific KB
+yatti-api history 20 jawawa          # Last 20 from specific KB
 yatti-api get-query q_abc123         # Get specific query by ID
 ```
 
@@ -665,7 +665,7 @@ scripts/                        # Development scripts
   ├── install-hooks.sh          # Install git hooks
   └── hooks/                    # Git hook templates
       └── pre-commit            # Shellcheck on commit
-tests/                          # Test suite (241 tests)
+tests/                          # Test suite (251 tests)
   ├── unit/                     # Unit tests (70 tests)
   │   ├── test_utils.bats       # Utility functions (1 test)
   │   ├── test_validation.bats  # URL/path validation (18 tests)
@@ -674,9 +674,9 @@ tests/                          # Test suite (241 tests)
   │   ├── test_large_payloads.bats   # Large query handling (8 tests)
   │   ├── test_unicode_handling.bats # Unicode/i18n support (15 tests)
   │   └── test_error_resilience.bats # Error handling (14 tests)
-  ├── integration/              # Integration tests (171 tests)
+  ├── integration/              # Integration tests (181 tests)
   │   ├── test_cmd_configure.bats  # Configure command (19 tests)
-  │   ├── test_cmd_query.bats   # Query command (22 tests)
+  │   ├── test_cmd_query.bats   # Query command (32 tests)
   │   ├── test_cmd_users.bats   # Users command (20 tests)
   │   ├── test_cmd_docs.bats    # Documentation command (12 tests)
   │   ├── test_cmd_knowledgebases.bats # KB command (10 tests)
@@ -693,8 +693,8 @@ tests/                          # Test suite (241 tests)
   │   ├── test_helpers.bash     # Common functions
   │   ├── mocks.bash            # Mock functions
   │   └── curl                  # Mock curl executable
-  ├── fixtures/                 # Mock data
-  │   └── api_responses.json    # API response fixtures
+  ├── fixtures/                 # Mock API response data
+  ├── smoke/                    # Live KB smoke test (smoke-kbs.bash)
   └── run_tests.sh              # Test runner
 mcp/                            # Python MCP server (separate sub-project)
   ├── mcp_server/server.py      # FastMCP wrapper around yatti-api CLI
@@ -738,7 +738,7 @@ See [tests/README.md](tests/README.md) for complete testing documentation.
 
 - ✓ ShellCheck: 0 warnings
 - ✓ BCS (Bash Coding Standard): 100% compliant
-- ✓ Test Coverage: 95%+ (241 tests)
+- ✓ Test Coverage: 95%+ (251 tests)
 - ✓ Security Audit: Passed (URL validation, GPG verification, path traversal prevention)
 
 ### Requirements
