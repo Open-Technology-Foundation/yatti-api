@@ -418,7 +418,7 @@ _yatti_query_complete() {
     -K|--knowledgebase)
       mapfile -t COMPREPLY < <(compgen -W "${YATTI_KB_LIST[*]}" -- "$cur") ;;
     -m|--model)
-      mapfile -t COMPREPLY < <(compgen -W "claude-sonnet-4-6 claude-haiku-4-5 gpt-4o gpt-4o-mini gemini-1.5-flash gemini-1.5-pro" -- "$cur") ;;
+      mapfile -t COMPREPLY < <(compgen -W "gpt-5.5 gpt-5.4 claude-sonnet-4-6 claude-haiku-4-5 gpt-4o gpt-4o-mini gemini-1.5-flash gemini-1.5-pro" -- "$cur") ;;
     -p|--prompt-template)
       mapfile -t COMPREPLY < <(compgen -W "default scholarly technical concise analytical conversational instructive" -- "$cur") ;;
     -Q|--query-file)

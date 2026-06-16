@@ -26,7 +26,7 @@ _yatti_api_completions() {
   local update_options="--check --force --help"
 
   # Available models for query command
-  local models="claude-sonnet-4-6 claude-opus-4-6 claude-opus-4-5 claude-sonnet-4-5 claude-haiku-4-5 gpt-4o gpt-4.1 gemini-2.5-pro gemini-2.5-flash"
+  local models="gpt-5.5 gpt-5.4 claude-sonnet-4-6 claude-opus-4-6 claude-opus-4-5 claude-sonnet-4-5 claude-haiku-4-5 gpt-4o gpt-4.1 gemini-2.5-pro gemini-2.5-flash"
 
   # Available knowledge bases (common ones)
   local common_kbs="appliedanthropology seculardharma okusiassociates wayang.net peraturan.go.id jawawa prosocial.world garydean okusimail okusiresearch ollama uv"

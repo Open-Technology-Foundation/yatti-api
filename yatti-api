@@ -355,7 +355,7 @@ cmd_knowledgebases() {
 
 # Command: query
 cmd_query() {
-  local -- kb_name='' query_text='' query_file='' temperature='0.0' model='claude-sonnet-4-6'
+  local -- kb_name='' query_text='' query_file='' temperature='0.0' model='gpt-5.5'
   local -i force_refresh=0 context_only=0
   # Numeric options are kept as strings (not -i) so malformed input is rejected
   # with a clear message below instead of crashing at assignment under set -u.
