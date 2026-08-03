@@ -12,8 +12,10 @@ source_yatti_functions() {
 
   # Source the script (loads all functions)
   # Override main to do nothing
+  # shellcheck disable=SC2329  # invoked indirectly by the sourced script
   main() { :; }
 
+  # shellcheck disable=SC1091  # target resolved at test runtime
   source "${BATS_TEST_DIRNAME}/../../yatti-api"
 
   # Restore environment
@@ -119,6 +121,7 @@ teardown_test_env() {
 
   # Unset mock curl variables
   unset MOCK_CURL_RESPONSE MOCK_CURL_HTTP_CODE MOCK_CURL_FAIL
+  unset MOCK_CURL_EXIT_CODE MOCK_CURL_EXIT_AFTER_BODY
 }
 
 # Create a test API key file

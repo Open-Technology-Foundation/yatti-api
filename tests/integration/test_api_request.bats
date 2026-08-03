@@ -121,6 +121,21 @@ teardown() {
   [[ "$status" -ne 0 ]]
 }
 
+@test "api_request fails on truncated transfer despite HTTP 200 trailer" {
+  # Arrange - curl dies mid-body (exit 28) after the server already sent 200;
+  # real curl still emits the partial body and the -w trailer
+  set_mock_curl_response '{"status":"ok","data":"parti' "200"
+  export MOCK_CURL_EXIT_AFTER_BODY=28
+  export YATTI_MAX_RETRIES=1
+
+  # Act
+  run ./yatti-api status
+
+  # Assert - partial body must not be treated as success
+  [[ "$status" -ne 0 ]]
+  [[ "$output" != *'"data"'* ]]
+}
+
 # ============================================================
 # API Key Handling
 # ============================================================
@@ -149,6 +164,32 @@ teardown() {
 
   # Assert
   [[ "$status" -eq 0 ]]
+}
+
+@test "api_request keeps API key off the curl command line" {
+  # Arrange - a key on argv is visible in ps / /proc/<pid>/cmdline
+  set_mock_curl_response '{"status":"ok"}' "200"
+  export MOCK_CURL_ARGS_FILE="${BATS_TEST_TMPDIR}/curl_args"
+
+  # Act
+  run ./yatti-api status
+
+  # Assert - key value must not appear in any argv element
+  [[ "$status" -eq 0 ]]
+  ! grep -q 'test_api_key_123456' "$MOCK_CURL_ARGS_FILE"
+}
+
+@test "api_request still delivers X-API-Key header to curl" {
+  # Arrange
+  set_mock_curl_response '{"status":"ok"}' "200"
+  export MOCK_CURL_ARGS_FILE="${BATS_TEST_TMPDIR}/curl_args"
+
+  # Act
+  run ./yatti-api status
+
+  # Assert - resolved headers (incl. @file indirection) must carry the key
+  [[ "$status" -eq 0 ]]
+  grep -q '^X-API-Key: test_api_key_123456$' "${MOCK_CURL_ARGS_FILE}.headers"
 }
 
 #fin

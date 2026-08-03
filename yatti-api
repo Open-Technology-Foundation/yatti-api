@@ -153,7 +153,6 @@ api_request() {
   local -a headers=()
   headers+=(-H 'Content-Type: application/json')
   headers+=(-H 'Accept: application/json')
-  [[ -z "$api_key" ]] || headers+=(-H "X-API-Key: $api_key")
 
   info "Request: $method ${API_BASE}${endpoint}"
 
@@ -162,25 +161,30 @@ api_request() {
 
     # Make request and capture both response and HTTP code
     # Note: Don't use -f flag - we need to capture response body for error messages
+    # API key travels via a /dev/fd header file, never argv, so it cannot
+    # be read from ps or /proc/<pid>/cmdline while the request is in flight
     response=$(curl -s \
         --connect-timeout "$CURL_CONNECT_TIMEOUT" \
         --max-time "$CURL_MAX_TIME" \
         -w "\n__HTTP_CODE__%{http_code}" \
         -X "$method" \
         "${headers[@]}" \
+        -H @<(printf '%s\n' "${api_key:+X-API-Key: $api_key}") \
         "${curl_args[@]}" \
         "${API_BASE}$endpoint" 2>/dev/null) || curl_exit=$?
 
-    # Check for curl-level failures (connection errors, timeouts)
-    if ((curl_exit)) && [[ -z "$response" || "$response" == *"__HTTP_CODE__000"* ]]; then
+    # Check for curl-level failures (connection errors, timeouts, truncated
+    # transfers). curl writes the -w trailer even on mid-body failure, so a
+    # nonzero exit invalidates the response regardless of the reported code.
+    if ((curl_exit)); then
       if ((attempt < MAX_RETRIES)); then
-        warn "Connection failed (curl exit $curl_exit), retry $attempt/$MAX_RETRIES in ${backoff}s..."
+        warn "Transfer failed (curl exit $curl_exit), retry $attempt/$MAX_RETRIES in ${backoff}s..."
         sleep "$backoff"
         backoff=$((backoff * 2))
         curl_exit=0
         continue
       else
-        error "Connection failed after $MAX_RETRIES attempts"
+        error "Transfer failed after $MAX_RETRIES attempts (curl exit $curl_exit)"
         return 1
       fi
     fi

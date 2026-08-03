@@ -100,8 +100,12 @@ async def run_yatti_command(args: list[str], timeout: int = 120) -> str:
         Command output (stdout) or error message
     """
     try:
+        # stdin must be detached: under stdio transport the server's stdin is
+        # the MCP protocol pipe, and an inheriting child (e.g. the CLI's
+        # stdin auto-detect) would consume protocol bytes and corrupt the session
         proc = await asyncio.create_subprocess_exec(
             "yatti-api", *args,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -124,6 +128,18 @@ async def run_yatti_command(args: list[str], timeout: int = 120) -> str:
         return "Error: yatti-api command not found. Ensure it is installed and in PATH."
     except Exception as e:
         return f"Error: {str(e)}"
+
+
+def invalid_query_error(query: str) -> Optional[str]:
+    """Reject queries the CLI would try to satisfy from stdin.
+
+    Empty/whitespace queries and the literal "-" make yatti-api read the
+    query from stdin, which does not exist in the MCP subprocess context.
+    """
+    stripped = query.strip()
+    if not stripped or stripped == "-":
+        return "Error: query must be a non-empty string ('-'/stdin input is not supported via MCP)"
+    return None
 
 
 def format_kb_table() -> str:
@@ -242,6 +258,9 @@ async def yatti_query(
     - uv: Full-stack programming
     - smi: SMI domain research
     """
+    if (error := invalid_query_error(query)) is not None:
+        return error
+
     kb_name = resolve_kb_name(knowledgebase)
     if kb_name not in KB_INFO:
         available = ", ".join(sorted(KB_INFO.keys()))
@@ -279,6 +298,9 @@ async def yatti_query_context_only(
     Returns only the relevant source documents/excerpts without generating
     an AI response. Useful for seeing raw source material.
     """
+    if (error := invalid_query_error(query)) is not None:
+        return error
+
     kb_name = resolve_kb_name(knowledgebase)
     if kb_name not in KB_INFO:
         available = ", ".join(sorted(KB_INFO.keys()))

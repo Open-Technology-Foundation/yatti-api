@@ -9,7 +9,11 @@
 #   MOCK_CURL_RESPONSE      - JSON response body
 #   MOCK_CURL_HTTP_CODE     - HTTP status code (default: 200)
 #   MOCK_CURL_FAIL          - Set to 1 for connection failure (exit 7)
-#   MOCK_CURL_EXIT_CODE     - Custom exit code (default: 0)
+#   MOCK_CURL_EXIT_CODE     - Custom exit code, no output (default: 0)
+#   MOCK_CURL_EXIT_AFTER_BODY - Exit with this code AFTER emitting body+trailer
+#                             (simulates truncated transfer, e.g. 28)
+#   MOCK_CURL_ARGS_FILE     - Path to record argv (one arg per line); resolved
+#                             -H headers (incl. @file) go to <path>.headers
 #   MOCK_CURL_CALL_COUNT    - Path to file for tracking call count
 #   MOCK_CURL_RESPONSES     - Path to file with line-delimited responses (for retry testing)
 #
@@ -24,6 +28,25 @@
 #   export MOCK_CURL_RESPONSES="$BATS_TMPDIR/responses"
 #   export MOCK_CURL_CALL_COUNT="$BATS_TMPDIR/count"
 #   # First call returns 500, second returns 200
+
+# Record argv (and resolved -H headers, including @file forms) for tests
+# that assert on what was actually sent
+if [[ -n "${MOCK_CURL_ARGS_FILE:-}" ]]; then
+  printf '%s\n' "$@" > "$MOCK_CURL_ARGS_FILE"
+  : > "${MOCK_CURL_ARGS_FILE}.headers"
+  prev=''
+  for arg in "$@"; do
+    if [[ "$prev" == '-H' ]]; then
+      if [[ "$arg" == @* ]]; then
+        # header-from-file: /dev/fd/N is valid here because the fd is inherited
+        cat "${arg#@}" >> "${MOCK_CURL_ARGS_FILE}.headers" 2>/dev/null || true
+      else
+        printf '%s\n' "$arg" >> "${MOCK_CURL_ARGS_FILE}.headers"
+      fi
+    fi
+    prev="$arg"
+  done
+fi
 
 # Increment call counter if tracking file is set
 if [[ -n "${MOCK_CURL_CALL_COUNT:-}" ]]; then
@@ -63,6 +86,13 @@ http_code="${http_code:-${MOCK_CURL_HTTP_CODE:-200}}"
 # If no response set, use empty JSON object
 if [[ -z "$response" ]]; then
   response="{}"
+fi
+
+# Simulate a transfer that fails mid-body (e.g. timeout, exit 28): real curl
+# still emits the partial body and the -w trailer with the received status code
+if [[ -n "${MOCK_CURL_EXIT_AFTER_BODY:-}" ]] && [[ "$MOCK_CURL_EXIT_AFTER_BODY" != "0" ]]; then
+  printf '%s\n__HTTP_CODE__%s' "$response" "$http_code"
+  exit "$MOCK_CURL_EXIT_AFTER_BODY"
 fi
 
 # Output in the format curl -w "\n__HTTP_CODE__%{http_code}" would produce
