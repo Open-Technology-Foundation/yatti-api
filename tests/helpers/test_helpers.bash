@@ -18,6 +18,16 @@ source_yatti_functions() {
   # shellcheck disable=SC1091  # target resolved at test runtime
   source "${BATS_TEST_DIRNAME}/../../yatti-api"
 
+  # Sourcing inside this function makes the script's top-level `declare`
+  # constants function-local; republish the ones functions need at runtime
+  # as globals before they vanish with this scope
+  local -- v
+  for v in CURL_CONNECT_TIMEOUT CURL_MAX_TIME MAX_RETRIES \
+           GPG_KEY_FINGERPRINT API_BASE VERSION SCRIPT_NAME \
+           RED GREEN YELLOW CYAN BOLD_CYAN NC; do
+    declare -gx "$v=${!v}"
+  done
+
   # Restore environment
   unset -f main
   if declare -f __original_main >/dev/null 2>&1; then

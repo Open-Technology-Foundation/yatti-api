@@ -14,6 +14,9 @@
 #                             (simulates truncated transfer, e.g. 28)
 #   MOCK_CURL_ARGS_FILE     - Path to record argv (one arg per line); resolved
 #                             -H headers (incl. @file) go to <path>.headers
+#
+# When argv contains `-o <file>`, the body is written there (as real curl
+# does) and nothing goes to stdout.
 #   MOCK_CURL_CALL_COUNT    - Path to file for tracking call count
 #   MOCK_CURL_RESPONSES     - Path to file with line-delimited responses (for retry testing)
 #
@@ -88,6 +91,14 @@ if [[ -z "$response" ]]; then
   response="{}"
 fi
 
+# Honor -o <file>: real curl writes the body there, not to stdout
+outfile=''
+prev=''
+for arg in "$@"; do
+  [[ "$prev" == '-o' ]] && outfile=$arg
+  prev=$arg
+done
+
 # Simulate a transfer that fails mid-body (e.g. timeout, exit 28): real curl
 # still emits the partial body and the -w trailer with the received status code
 if [[ -n "${MOCK_CURL_EXIT_AFTER_BODY:-}" ]] && [[ "$MOCK_CURL_EXIT_AFTER_BODY" != "0" ]]; then
@@ -97,4 +108,8 @@ fi
 
 # Output in the format curl -w "\n__HTTP_CODE__%{http_code}" would produce
 # The response body, then newline, then __HTTP_CODE__, then the code (no trailing newline)
-printf '%s\n__HTTP_CODE__%s' "$response" "$http_code"
+if [[ -n "$outfile" ]]; then
+  printf '%s' "$response" > "$outfile"
+else
+  printf '%s\n__HTTP_CODE__%s' "$response" "$http_code"
+fi

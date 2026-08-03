@@ -71,8 +71,9 @@ teardown() {
   [[ "$output" -ge 1 ]]
 }
 
-@test "verify_key_fingerprint function exists in script" {
-  run grep -c 'verify_key_fingerprint()' ./yatti-api
+# Behavioral fingerprint-pinning coverage lives in test_update_helpers.bats
+@test "pubkey_file_fingerprint function exists in script" {
+  run grep -c 'pubkey_file_fingerprint()' ./yatti-api
   [[ "$output" -ge 1 ]]
 }
 

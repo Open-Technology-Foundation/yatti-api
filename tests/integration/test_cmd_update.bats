@@ -67,11 +67,20 @@ teardown() {
   [[ "$output" == *"Unknown"* ]]
 }
 
-@test "update handles API failure gracefully" {
+@test "update dies 23 with clear message when update check fails" {
   set_mock_curl_fail
+  export YATTI_MAX_RETRIES=1
   run ./yatti-api update --check
-  # curl failures exit with code 7 (connection refused); set -e causes immediate exit
-  [[ "$status" -ne 0 ]]
+  [[ "$status" -eq 23 ]]
+  [[ "$output" == *'Failed to check for updates'* ]]
+}
+
+@test "update refuses to run through a symlinked install" {
+  set_mock_curl_response "$(jq -c '.update_check.no_update' "$FIXTURES_FILE")" "200"
+  ln -s "$(pwd)/yatti-api" "${BATS_TEST_TMPDIR}/yatti-link"
+  run "${BATS_TEST_TMPDIR}/yatti-link" update --force
+  [[ "$status" -eq 11 ]]
+  [[ "$output" == *symlink* ]]
 }
 
 @test "update handles malformed API response" {

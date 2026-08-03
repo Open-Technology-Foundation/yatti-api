@@ -81,4 +81,20 @@ teardown() {
   [[ "$status" -ne 0 ]]
 }
 
+@test "kb list --long survives a failing per-KB detail fetch" {
+  # First call: KB list; second: kb1 detail fails (500); third: kb2 detail OK.
+  # A single failed detail fetch must not abort the whole listing.
+  export YATTI_MAX_RETRIES=1
+  setup_mock_curl_retries \
+    '200:{"data":{"knowledgebases":[{"name":"kb1"},{"name":"kb2"}]}}' \
+    '500:{"error":{"message":"server error"}}' \
+    '200:{"data":{"long_description":"KB2 long description"}}'
+
+  run ./yatti-api kb list --long
+
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *'No long description available'* ]]
+  [[ "$output" == *'KB2 long description'* ]]
+}
+
 #fin

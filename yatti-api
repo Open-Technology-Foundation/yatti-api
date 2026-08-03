@@ -9,6 +9,9 @@ command -v curl >/dev/null || { >&2 echo 'Error: curl required (apt install curl
 
 # Script metadata
 declare -r VERSION='1.4.3'
+# Invocation path as typed, BEFORE symlink resolution — realpath below
+# canonicalizes, so symlink checks must use this one
+declare -r INVOKED_AS=$0
 #shellcheck disable=SC2155
 declare -r SCRIPT_PATH=$(realpath -- "$0")
 declare -r SCRIPT_NAME=${SCRIPT_PATH##*/}
@@ -121,8 +124,8 @@ load_api_key() {
 save_api_key() {
   local -- api_key=$1
   #shellcheck disable=SC2174  # -m only applies to deepest dir, which is intentional
-  mkdir -p -m 700 "$CONFIG_DIR"
-  install -m 600 /dev/null "$API_KEY_FILE"
+  mkdir -p -m 700 "$CONFIG_DIR" || die 5 "Failed to create config directory ${CONFIG_DIR@Q}"
+  install -m 600 /dev/null "$API_KEY_FILE" || die 5 "Failed to create key file ${API_KEY_FILE@Q}"
   echo "$api_key" > "$API_KEY_FILE" || die 5 "Failed to write API key to ${API_KEY_FILE@Q}"
   success "API key saved to ${API_KEY_FILE@Q}"
 }
@@ -211,6 +214,15 @@ api_request() {
   done
 
   return 1
+}
+
+# Download a URL to a file with bounded timeouts (curl exit status returned).
+# Args: $1=url, $2=output file
+fetch_url() {
+  curl -sfL \
+      --connect-timeout "$CURL_CONNECT_TIMEOUT" \
+      --max-time "$CURL_MAX_TIME" \
+      "$1" -o "$2"
 }
 
 # Format JSON output
@@ -333,7 +345,8 @@ cmd_knowledgebases() {
       if ((show_long)); then
         # Fetch KB list and display with long descriptions from API
         while IFS= read -r kb_name; do
-          long_desc=$(api_request GET /knowledgebases/"$kb_name" 2>/dev/null | jq -r '.data.long_description // empty')
+          # ||: soft-fail: one unreachable KB must not abort the whole listing
+          long_desc=$(api_request GET /knowledgebases/"$kb_name" 2>/dev/null | jq -r '.data.long_description // empty') ||:
           [[ -n "$long_desc" ]] || long_desc='No long description available'
           printf '\n%s%s%s\n%s\n' "$BOLD_CYAN" "$kb_name" "$NC" "$long_desc"
         done < <(api_request GET /knowledgebases | jq -r '.data.knowledgebases[].name' 2>/dev/null)
@@ -744,59 +757,59 @@ cmd_version() {
   fi
 }
 
+# Fingerprint of the first key in an armored key file, read WITHOUT touching
+# any keyring (gpg --show-keys), so pinning can be enforced before import.
+# Args: $1=key file. Prints the fingerprint (no spaces).
+pubkey_file_fingerprint() {
+  gpg --batch --with-colons --show-keys "$1" 2>/dev/null \
+    | awk -F: '/^fpr:/{print $10; exit}'
+}
+
 # Import GPG public key for update signature verification.
 # Caches the key in $CONFIG_DIR/pubkey.asc for 7 days; refreshes from
-# $API_BASE/client/pubkey when stale or missing. Enforces fingerprint pinning
-# against $GPG_KEY_FINGERPRINT to defeat MITM key substitution.
-# Returns: 0=key imported and fingerprint verified, 1=key unavailable (soft fail),
+# $API_BASE/client/pubkey when stale or missing. The pinned fingerprint
+# ($GPG_KEY_FINGERPRINT) is checked against the key FILE before import, so
+# the isolated keyring only ever contains the pinned key.
+# Args: $1=isolated GNUPGHOME directory (created by caller, mode 700)
+# Returns: 0=pinned key imported, 1=key unavailable (soft fail),
 #          2=fingerprint mismatch (hard fail, do not proceed)
 import_update_pubkey() {
+  local -- gpg_home=$1
   local -- pubkey_cache="$CONFIG_DIR"/pubkey.asc
-  local -- imported_fp
+  local -- pinned_fp=${GPG_KEY_FINGERPRINT// /}
+  local -i cache_age=604800
 
-  # Verify fingerprint of cached/imported key matches pinned fingerprint
-  verify_key_fingerprint() {
-    # Extract fingerprint from GPG keyring (remove spaces for comparison)
-    imported_fp=$(gpg --batch --with-colons --fingerprint 2>/dev/null \
-      | grep -A1 'pub:' | grep '^fpr:' | head -1 | cut -d: -f10)
-    # Normalize pinned fingerprint (remove spaces)
-    local -- pinned_fp=${GPG_KEY_FINGERPRINT// /}
-    [[ "$imported_fp" == "$pinned_fp" ]]
-  }
-
-  # Use cached key if it exists and is recent (7 days)
+  # Use cached key when fresh (7 days), valid, and still matching the pin
   if [[ -f "$pubkey_cache" ]]; then
-    local -i cache_age
-    cache_age=$(( $(date +%s) - $(stat -c %Y "$pubkey_cache" 2>/dev/null || echo 0) ))
-    if ((cache_age < 604800)); then
-      # Verify cached key still matches pinned fingerprint
-      if verify_key_fingerprint; then
-        return 0
-      fi
-      # Fingerprint mismatch - remove cache and re-download
-      rm -f "$pubkey_cache"
-    fi
+    cache_age=$(( EPOCHSECONDS - $(stat -c %Y "$pubkey_cache" 2>/dev/null || echo 0) ))
+  fi
+  if ((cache_age < 604800)) \
+      && grep -q 'BEGIN PGP PUBLIC KEY' "$pubkey_cache" 2>/dev/null \
+      && [[ "$(pubkey_file_fingerprint "$pubkey_cache")" == "$pinned_fp" ]]; then
+    gpg --homedir "$gpg_home" --batch --import "$pubkey_cache" 2>/dev/null || return 1
+    return 0
   fi
 
-  # Download public key from API
-  if curl -sfL "$API_BASE"/client/pubkey -o "$pubkey_cache" 2>/dev/null; then
-    # Verify it's a valid GPG key format
-    if grep -q 'BEGIN PGP PUBLIC KEY' "$pubkey_cache" 2>/dev/null; then
-      gpg --batch --import "$pubkey_cache" 2>/dev/null
-      # Security: Verify imported key fingerprint matches pinned fingerprint
-      if verify_key_fingerprint; then
-        return 0
-      else
-        warn 'GPG key fingerprint mismatch - possible MITM attack'
-        rm -f "$pubkey_cache"
-        return 2  # Hard fail - fingerprint doesn't match
-      fi
-    else
-      rm -f "$pubkey_cache"
-      return 1
-    fi
+  # Cache missing, stale, invalid, or mismatched - fetch a fresh copy
+  rm -f "$pubkey_cache"
+  if ! fetch_url "$API_BASE"/client/pubkey "$pubkey_cache" 2>/dev/null; then
+    rm -f "$pubkey_cache"
+    return 1
   fi
-  return 1
+  if ! grep -q 'BEGIN PGP PUBLIC KEY' "$pubkey_cache" 2>/dev/null; then
+    rm -f "$pubkey_cache"
+    return 1
+  fi
+
+  # Security: enforce fingerprint pinning on the FILE, before import
+  if [[ "$(pubkey_file_fingerprint "$pubkey_cache")" != "$pinned_fp" ]]; then
+    warn 'GPG key fingerprint mismatch - possible MITM attack'
+    rm -f "$pubkey_cache"
+    return 2  # Hard fail - fingerprint doesn't match
+  fi
+
+  gpg --homedir "$gpg_home" --batch --import "$pubkey_cache" 2>/dev/null || return 1
+  return 0
 }
 
 # Verify GPG signature of downloaded update against pinned public key.
@@ -807,6 +820,7 @@ import_update_pubkey() {
 verify_update_signature() {
   local -- script_file=$1
   local -- sig_file="$script_file".sig
+  local -- gpg_home=''
 
   # Check gpg is available
   if ! command -v gpg &>/dev/null; then
@@ -814,37 +828,36 @@ verify_update_signature() {
     return 1
   fi
 
+  # Clean up signature file and throwaway keyring on every exit path
+  trap 'rm -f "$sig_file"; [[ -z "$gpg_home" ]] || rm -rf "$gpg_home"' RETURN
+
   # Download signature (soft fail if not available)
-  if ! curl -sfL "$API_BASE"/client/download.sig -o "$sig_file" 2>/dev/null; then
-    rm -f "$sig_file"
+  if ! fetch_url "$API_BASE"/client/download.sig "$sig_file" 2>/dev/null; then
     return 1  # Signature not available from server
   fi
 
   # Check signature file is not empty
-  if [[ ! -s "$sig_file" ]]; then
-    rm -f "$sig_file"
-    return 1
-  fi
+  [[ -s "$sig_file" ]] || return 1
+
+  # Isolated keyring: verification can only ever be satisfied by the pinned
+  # key imported below, not by arbitrary keys in the user's keyring
+  gpg_home=$(mktemp -d "${TMPDIR:-/tmp}"/yatti-gpg.XXXXXX) || return 1
+  chmod 700 "$gpg_home"
 
   # Import/refresh public key
   local -i pubkey_result=0
-  import_update_pubkey || pubkey_result=$?
+  import_update_pubkey "$gpg_home" || pubkey_result=$?
   if ((pubkey_result == 2)); then
-    rm -f "$sig_file"
     return 2  # Fingerprint mismatch - security failure
   elif ((pubkey_result != 0)); then
-    rm -f "$sig_file"
     return 1  # Public key not available
   fi
 
-  # Verify signature
-  if gpg --batch --quiet --verify "$sig_file" "$script_file" 2>/dev/null; then
-    rm -f "$sig_file"
+  # Verify signature against the isolated keyring
+  if gpg --homedir "$gpg_home" --batch --quiet --verify "$sig_file" "$script_file" 2>/dev/null; then
     return 0  # Verified successfully
-  else
-    rm -f "$sig_file"
-    return 2  # Verification failed - DO NOT proceed
   fi
+  return 2  # Verification failed - DO NOT proceed
 }
 
 # Command: update
@@ -860,7 +873,10 @@ cmd_update() {
       rm -f "$temp_file"
     fi
   }
-  trap 'cleanup_temp_file $?' EXIT INT TERM
+  trap 'cleanup_temp_file' EXIT
+  # Signal handlers must terminate, not return control mid-update
+  trap 'cleanup_temp_file; exit 130' INT
+  trap 'cleanup_temp_file; exit 143' TERM
 
   # Check if this is a system-wide installation that will need sudo
   local -- script_dir
@@ -902,10 +918,12 @@ cmd_update() {
   
   info 'Checking for updates...'
   
-  # Get latest version info from API
+  # Get latest version info from API (|| on the assignment: a bare failing
+  # substitution would exit under set -e before any guard could run)
   local -- version_response
-  version_response=$(api_request GET "/client/check-update?version=$VERSION" 2>/dev/null)
-  
+  version_response=$(api_request GET "/client/check-update?version=$VERSION" 2>/dev/null) \
+    || die 23 'Failed to check for updates'
+
   [[ -n "$version_response" ]] || die 23 'Failed to check for updates'
 
   # Extract version info efficiently (single jq call instead of two)
@@ -936,6 +954,12 @@ cmd_update() {
   
   # Perform update
   if ((update_available || force)); then
+    # Security check: refuse to update through a symlinked install. Must use
+    # the pre-realpath invocation path - SCRIPT_PATH is already resolved and
+    # can never be a symlink. Checked before sudo re-exec and any download.
+    [[ ! -L "$INVOKED_AS" ]] \
+      || die 11 "Cannot update: $INVOKED_AS is a symlink (update the target directly)"
+
     if ((update_available)); then
       info "Updating from $VERSION to $latest_version..."
     else
@@ -965,7 +989,7 @@ cmd_update() {
     temp_file=$(mktemp "${TMPDIR:-/tmp}"/yatti-api.XXXXXX) || die 1 'Failed to create temp file'
 
     info 'Downloading new version...'
-    if ! curl -sfL "$API_BASE"/client/download -o "$temp_file"; then
+    if ! fetch_url "$API_BASE"/client/download "$temp_file"; then
       rm -f "$temp_file"
       die 23 'Failed to download update'
     fi
@@ -995,9 +1019,6 @@ cmd_update() {
       2) rm -f "$temp_file"
          die 11 'GPG signature verification failed - update aborted for security' ;;
     esac
-
-    # Security check: refuse to update if script path is a symlink
-    [[ ! -L "$SCRIPT_PATH" ]] || die 11 "Cannot update: $SCRIPT_PATH is a symlink"
 
     # Handle update based on permissions
     if ((needs_sudo)); then
@@ -1072,7 +1093,7 @@ main() {
 
   # Ensure config directory exists
   #shellcheck disable=SC2174  # -m only applies to deepest dir, which is intentional
-  mkdir -p -m 700 "$CONFIG_DIR"
+  mkdir -p -m 700 "$CONFIG_DIR" || die 5 "Failed to create config directory ${CONFIG_DIR@Q}"
 
   case $command in
     configure)
