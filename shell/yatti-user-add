@@ -126,6 +126,9 @@ adduser --disabled-password --gecos 'YaTTi Shell User' \
         --shell "$LAUNCHER" --ingroup "$GROUP_NAME" "$USERNAME" \
   || die 4 "Failed to create user ${USERNAME@Q}"
 USER_CREATED=1
+# adduser --disabled-password leaves a locking '!' in shadow; sshd refuses
+# locked accounts ("account is locked"), so mark key-only with '*' instead
+usermod -p '*' "$USERNAME" || die 4 "Failed to unlock account ${USERNAME@Q} for key-only login"
 success "Created user $USERNAME with primary group $GROUP_NAME"
 
 # SSH key
