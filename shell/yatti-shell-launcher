@@ -38,21 +38,16 @@ fi
 # ── Ensure Conversation Directory ─────────────────────────────────────────────
 
 declare -r CONV_DIR="${HOME}/conversations"
-if [[ ! -d "$CONV_DIR" ]]; then
-  mkdir -p "${CONV_DIR}/general"
-fi
-if [[ ! -d "${CONV_DIR}/general" ]]; then
-  mkdir -p "${CONV_DIR}/general"
-fi
+mkdir -p "${CONV_DIR}/general" || die 4 "Cannot create conversation directory ${CONV_DIR@Q}"
 # Set default conversation if not set
 if [[ ! -L "${CONV_DIR}/.current" ]]; then
-  ln -sf general "${CONV_DIR}/.current"
+  ln -sf general "${CONV_DIR}/.current" || die 4 'Cannot set default conversation symlink'
 fi
 
 # ── Minimal passwd/group for UID resolution ───────────────────────────────────
 
 declare -r ETC_STAGING="${HOME}/.cache/yatti-shell-etc"
-mkdir -p "$ETC_STAGING"
+mkdir -p "$ETC_STAGING" || die 4 "Cannot create staging directory ${ETC_STAGING@Q}"
 declare -- REAL_USER
 REAL_USER=$(id -un)
 declare -i REAL_UID REAL_GID
@@ -143,6 +138,11 @@ declare -a BWRAP_ARGS=(
   --unshare-pid
   --die-with-parent
 
+  # Environment: start from empty — the login environment (SSH_*, XDG_*,
+  # LS_COLORS, any host secrets) must not leak into the sandbox; everything
+  # the shell needs is set explicitly below
+  --clearenv
+
   # Working directory and environment
   --chdir /home/user
   --setenv HOME        /home/user
@@ -156,6 +156,11 @@ declare -a BWRAP_ARGS=(
 )
 
 # ── Enter Sandbox ─────────────────────────────────────────────────────────────
+
+# Scrub loader-influencing variables from bwrap's OWN environment
+# (--clearenv only sanitises the sandboxed child, not the bwrap process;
+# SHELLOPTS is readonly in bash and cannot be unset)
+unset LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT BASH_ENV ENV
 
 exec bwrap "${BWRAP_ARGS[@]}" \
   /bin/bash --rcfile /etc/yatti-shell/bashrc -i

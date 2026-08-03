@@ -16,35 +16,54 @@ die()     { _msg "ERROR: $2"; exit "$1"; }
 
 usage() {
   cat >&2 <<EOF
-Usage: ${PROG} <username> <ssh-public-key> [api-key]
+Usage: ${PROG} [-k key-file] <username> <ssh-public-key>
 
 Arguments:
   username        System username to create
   ssh-public-key  SSH public key string (ssh-ed25519 AAAA... user@host)
-  api-key         YaTTi API key (create via web panel first; prompted if omitted)
+
+Options:
+  -k, --key-file FILE  Read the YaTTi API key from FILE ('-' for stdin).
+                       Without this option the key is prompted for
+                       interactively. The key is never accepted as a
+                       command-line argument (visible in ps and shell
+                       history).
 
 The user will be created with:
   - Login shell: ${LAUNCHER}
-  - Group membership: ${GROUP_NAME}
+  - Primary group: ${GROUP_NAME} (required — the nftables egress rules
+    match the primary GID only)
   - Home directory: /home/<username>
   - Default conversation: ~/conversations/general/
 
 Workflow:
   1. Create the API user via the YaTTi web admin panel
-  2. Copy the API key from the web panel
-  3. Run: ${PROG} <username> <ssh-key> <api-key>
+  2. Run: ${PROG} <username> '<ssh-key>' and paste the key at the prompt
 EOF
-  exit 2
+  exit "${1:-2}"
 }
 
 # ── Argument Parsing ──────────────────────────────────────────────────────────
 
 (( EUID == 0 )) || die 1 "Must run as root"
-(( $# >= 2 ))   || usage
 
-declare -r USERNAME=$1
-declare -r SSH_KEY=$2
-declare -- API_KEY=${3:-}
+declare -- KEY_FILE=''
+declare -a POSITIONAL=()
+while (($#)); do
+  case $1 in
+    -k|--key-file) [[ -n "${2:-}" ]] || die 2 "Option $1 requires an argument"
+                   KEY_FILE=$2; shift ;;
+    -h|--help)     usage 0 ;;
+    -*)            die 2 "Unknown option: $1" ;;
+    *)             POSITIONAL+=("$1") ;;
+  esac
+  shift
+done
+(( ${#POSITIONAL[@]} == 2 )) || usage
+
+declare -r USERNAME=${POSITIONAL[0]}
+declare -r SSH_KEY=${POSITIONAL[1]}
+declare -- API_KEY=''
 
 # Validate username
 if [[ ! "$USERNAME" =~ ^[a-z][a-z0-9_-]{1,30}$ ]]; then
@@ -60,12 +79,18 @@ fi
 [[ -x "$LAUNCHER" ]] || die 3 "Launcher not installed at ${LAUNCHER} — run 'make install' first"
 getent group "$GROUP_NAME" >/dev/null 2>&1 || die 3 "Group ${GROUP_NAME} missing — run yatti-shell-setup first"
 
-# Prompt for API key if not provided
-if [[ -z "$API_KEY" ]]; then
+# Load API key: file, stdin, or interactive prompt — never from argv
+if [[ "$KEY_FILE" == '-' ]]; then
+  API_KEY=$(cat)
+elif [[ -n "$KEY_FILE" ]]; then
+  [[ -r "$KEY_FILE" ]] || die 2 "Cannot read key file ${KEY_FILE@Q}"
+  API_KEY=$(< "$KEY_FILE")
+else
   read -rsp "${PROG}: Enter API key for ${USERNAME}: " API_KEY
   echo >&2
-  [[ -n "$API_KEY" ]] || die 2 "API key cannot be empty"
 fi
+API_KEY=${API_KEY//[$'\r\n']/}
+[[ -n "$API_KEY" ]] || die 2 "API key cannot be empty"
 
 # ── Create User ───────────────────────────────────────────────────────────────
 
@@ -73,39 +98,62 @@ if id "$USERNAME" >/dev/null 2>&1; then
   die 4 "User ${USERNAME@Q} already exists"
 fi
 
-adduser --disabled-password --gecos "YaTTi Shell User" --shell "$LAUNCHER" "$USERNAME" \
+# Roll back a partially-created account on any later failure, so a re-run
+# never finds a half-configured user; re-raises the original exit status
+declare -i USER_CREATED=0
+cleanup_on_fail() {
+  local -i rc=$?
+  trap - EXIT
+  ((rc)) || exit 0
+  if ((USER_CREATED)); then
+    _msg "Rolling back partially-created user ${USERNAME@Q}"
+    deluser --remove-home "$USERNAME" 2>/dev/null \
+      || userdel -r "$USERNAME" 2>/dev/null \
+      || _msg "WARNING: rollback failed — remove ${USERNAME@Q} manually"
+  fi
+  exit "$rc"
+}
+trap cleanup_on_fail EXIT
+
+# Primary group MUST be ${GROUP_NAME}: the nftables egress rules match
+# `meta skgid`, which sees only the primary GID — a supplementary
+# membership would leave the firewall a silent no-op
+adduser --disabled-password --gecos "YaTTi Shell User" \
+        --shell "$LAUNCHER" --ingroup "$GROUP_NAME" "$USERNAME" \
   || die 4 "Failed to create user ${USERNAME@Q}"
-usermod -aG "$GROUP_NAME" "$USERNAME" \
-  || die 4 "Failed to add ${USERNAME@Q} to group ${GROUP_NAME}"
-success "Created user ${USERNAME} in group ${GROUP_NAME}"
+USER_CREATED=1
+success "Created user ${USERNAME} with primary group ${GROUP_NAME}"
 
 # ── SSH Key ───────────────────────────────────────────────────────────────────
 
 declare -r SSH_DIR="/home/${USERNAME}/.ssh"
-install -d -m 700 -o "$USERNAME" -g "$USERNAME" "$SSH_DIR"
+install -d -m 700 -o "$USERNAME" -g "$GROUP_NAME" "$SSH_DIR"
 echo "$SSH_KEY" > "${SSH_DIR}/authorized_keys"
 chmod 600 "${SSH_DIR}/authorized_keys"
-chown "$USERNAME:$USERNAME" "${SSH_DIR}/authorized_keys"
+chown "$USERNAME:$GROUP_NAME" "${SSH_DIR}/authorized_keys"
 success "Installed SSH key"
 
 # ── API Key ───────────────────────────────────────────────────────────────────
 
 declare -r CONFIG_DIR="/home/${USERNAME}/.config/yatti-api"
-install -d -m 700 -o "$USERNAME" -g "$USERNAME" "/home/${USERNAME}/.config"
-install -d -m 700 -o "$USERNAME" -g "$USERNAME" "$CONFIG_DIR"
+install -d -m 700 -o "$USERNAME" -g "$GROUP_NAME" "/home/${USERNAME}/.config"
+install -d -m 700 -o "$USERNAME" -g "$GROUP_NAME" "$CONFIG_DIR"
 install -m 600 /dev/null "${CONFIG_DIR}/api_key"
 echo "$API_KEY" > "${CONFIG_DIR}/api_key"
-chown "$USERNAME:$USERNAME" "${CONFIG_DIR}/api_key"
+chown "$USERNAME:$GROUP_NAME" "${CONFIG_DIR}/api_key"
 success "Saved API key"
 
 # ── Conversation Directory ────────────────────────────────────────────────────
 
 declare -r CONV_DIR="/home/${USERNAME}/conversations"
-install -d -m 755 -o "$USERNAME" -g "$USERNAME" "$CONV_DIR"
-install -d -m 755 -o "$USERNAME" -g "$USERNAME" "${CONV_DIR}/general"
+install -d -m 755 -o "$USERNAME" -g "$GROUP_NAME" "$CONV_DIR"
+install -d -m 755 -o "$USERNAME" -g "$GROUP_NAME" "${CONV_DIR}/general"
 ln -sf general "${CONV_DIR}/.current"
-chown -h "$USERNAME:$USERNAME" "${CONV_DIR}/.current"
+chown -h "$USERNAME:$GROUP_NAME" "${CONV_DIR}/.current"
 success "Created default conversation directory"
+
+# All steps succeeded — disarm the rollback
+trap - EXIT
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 

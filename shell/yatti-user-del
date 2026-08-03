@@ -6,6 +6,7 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
 
 declare -r PROG=${0##*/}
 declare -r ARCHIVE_DIR=/var/backups/yatti-shell
+declare -r GROUP_NAME=yatti-shell
 
 _msg() { >&2 printf '%s: %s\n' "$PROG" "$1"; }
 info()    { _msg "$1"; }
@@ -21,7 +22,7 @@ Options:
 
 By default, conversations are archived to ${ARCHIVE_DIR}/ before deletion.
 EOF
-  exit 2
+  exit "${1:-2}"
 }
 
 (( EUID == 0 )) || die 1 "Must run as root"
@@ -31,7 +32,7 @@ declare -i ARCHIVE=1
 while [[ $# -gt 0 ]]; do
   case $1 in
     -n|--no-archive) ARCHIVE=0; shift ;;
-    -h|--help)       usage ;;
+    -h|--help)       usage 0 ;;
     -*)              die 2 "Unknown option: $1" ;;
     *)               break ;;
   esac
@@ -43,6 +44,12 @@ declare -r USERNAME=$1
 # Validate user exists
 id "$USERNAME" >/dev/null 2>&1 || die 3 "User ${USERNAME@Q} not found"
 
+# Safety: only ever delete members of the yatti-shell group. Without this
+# check the script would happily remove ANY system account, home and all.
+if ! id -nG "$USERNAME" 2>/dev/null | tr ' ' '\n' | grep -qx "$GROUP_NAME"; then
+  die 3 "User ${USERNAME@Q} is not a ${GROUP_NAME} member — refusing to delete"
+fi
+
 # ── Archive ───────────────────────────────────────────────────────────────────
 
 declare -r USER_HOME="/home/${USERNAME}"
@@ -53,7 +60,10 @@ if (( ARCHIVE )) && [[ -d "$CONV_DIR" ]]; then
   declare -- ARCHIVE_FILE
   ARCHIVE_FILE="${ARCHIVE_DIR}/${USERNAME}-$(date +%Y%m%d-%H%M%S).tar.gz"
   declare -r ARCHIVE_FILE
-  tar -czf "$ARCHIVE_FILE" -C "$USER_HOME" conversations 2>/dev/null || true
+  # Archive is the safety net for the deletion below — a failed archive must
+  # abort, not silently proceed to destroy the user's data
+  tar -czf "$ARCHIVE_FILE" -C "$USER_HOME" conversations \
+    || die 4 "Archiving failed — user NOT deleted (use --no-archive to skip archiving)"
   chmod 600 "$ARCHIVE_FILE"
   success "Archived conversations to ${ARCHIVE_FILE}"
 fi
@@ -63,7 +73,9 @@ fi
 # Kill any running sessions
 pkill -u "$USERNAME" 2>/dev/null || true
 
-deluser --remove-home "$USERNAME" 2>/dev/null || userdel -r "$USERNAME" 2>/dev/null
+deluser --remove-home "$USERNAME" 2>/dev/null \
+  || userdel -r "$USERNAME" 2>/dev/null \
+  || die 4 "Failed to remove user ${USERNAME@Q}"
 success "Removed user ${USERNAME} and home directory"
 
 #fin

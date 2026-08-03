@@ -175,6 +175,12 @@ use() {
     return 1
   fi
   local -- name=$1
+  # Same validation as new(): without it 'use ../..' points .current
+  # outside the conversations tree
+  if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    echo "Error: name must be alphanumeric, dash, or underscore" >&2
+    return 1
+  fi
   local -- dir="${CONV_BASE}/${name}"
   if [[ ! -d "$dir" ]]; then
     echo "Error: conversation ${name@Q} not found" >&2

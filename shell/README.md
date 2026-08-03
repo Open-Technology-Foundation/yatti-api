@@ -41,16 +41,29 @@ sudo make check
 Create the user's API key via the [YaTTi admin panel](https://yatti.id/admin/) first, then:
 
 ```bash
-sudo yatti-user-add <username> <ssh-public-key> <api-key>
+sudo yatti-user-add <username> '<ssh-public-key>'
 ```
 
 Example:
 
 ```bash
-sudo yatti-user-add alice "ssh-ed25519 AAAAC3Nz... alice@laptop" "okusi_abc123..."
+sudo yatti-user-add alice "ssh-ed25519 AAAAC3Nz... alice@laptop"
 ```
 
-If the API key is omitted, the script prompts interactively.
+The API key is prompted for interactively (or supplied with
+`-k <file>` / `-k -` for stdin). It is never accepted as a command-line
+argument — argv is visible in `ps` and lands in root's shell history.
+
+The user is created with `yatti-shell` as their **primary** group: the
+nftables egress rules match `meta skgid`, which only sees the primary GID.
+
+**Migrating pre-existing users**: accounts created by older versions of
+`yatti-user-add` hold `yatti-shell` only as a supplementary group, so the
+egress firewall does NOT apply to them. Migrate each with:
+
+```bash
+sudo usermod -g yatti-shell <username>
+```
 
 ### List Users
 

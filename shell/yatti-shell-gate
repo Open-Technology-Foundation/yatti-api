@@ -9,6 +9,10 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
 
 declare -r PROG=${0##*/}
 
+# Scrub loader-influencing variables before any exec — this is an SSH
+# ForceCommand gatekeeper and must not honour session-supplied loader hooks
+unset LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT BASH_ENV ENV
+
 case "${SSH_ORIGINAL_COMMAND:-}" in
   '')
     # Interactive session → YaTTi shell
@@ -18,13 +22,11 @@ case "${SSH_ORIGINAL_COMMAND:-}" in
     # SFTP → read-only sftp-server
     exec /usr/lib/openssh/sftp-server -R
     ;;
-  scp\ *)
-    # SCP request
-    # shellcheck disable=SC2086  # intentional word splitting of scp args
-    exec /usr/bin/scp ${SSH_ORIGINAL_COMMAND#scp }
-    ;;
   *)
-    >&2 printf '%s: Only interactive shell and SFTP/SCP export are allowed.\n' "$PROG"
+    # Legacy scp (scp -O) would exec an unsandboxed, read-write scp on the
+    # host — rejected. Modern scp speaks SFTP and is served read-only by the
+    # sftp-server branch above.
+    >&2 printf '%s: Only interactive shell and read-only SFTP export are allowed (use sftp or modern scp).\n' "$PROG"
     exit 1
     ;;
 esac

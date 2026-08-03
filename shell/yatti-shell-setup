@@ -51,7 +51,7 @@ success "All prerequisites found"
 declare -- BWRAP_BIN
 BWRAP_BIN=$(command -v bwrap)
 if [[ ! -u "$BWRAP_BIN" ]]; then
-  chmod u+s "$BWRAP_BIN"
+  chmod u+s "$BWRAP_BIN" || die 4 "Failed to set setuid on ${BWRAP_BIN@Q}"
   success "Set setuid on ${BWRAP_BIN} (required for user namespace creation)"
 else
   info "bwrap already setuid"
@@ -62,15 +62,14 @@ fi
 if getent group "$GROUP_NAME" >/dev/null 2>&1; then
   info "Group ${GROUP_NAME} already exists"
 else
-  groupadd --system "$GROUP_NAME"
+  groupadd --system "$GROUP_NAME" || die 4 "Failed to create group ${GROUP_NAME@Q}"
   success "Created system group ${GROUP_NAME}"
 fi
 
 # ── Shared Directories ────────────────────────────────────────────────────────
 
-install -d -m 755 "$SHARE_DIR"
-install -d -m 755 "$BIN_DIR"
-install -d -m 755 "$CONF_DIR"
+install -d -m 755 "$SHARE_DIR" "$BIN_DIR" "$CONF_DIR" \
+  || die 4 "Failed to create shared directories under ${SHARE_DIR@Q}"
 
 # ── Busybox Applet Symlinks ───────────────────────────────────────────────────
 
@@ -88,7 +87,8 @@ declare -i skipped=0
 for applet in "${ALLOWED_APPLETS[@]}"; do
   if [[ -v AVAILABLE_APPLETS["$applet"] ]]; then
     # Target /usr/bin/busybox — the path inside the bwrap sandbox
-    ln -sf /usr/bin/busybox "${BIN_DIR}/${applet}"
+    ln -sf /usr/bin/busybox "${BIN_DIR}/${applet}" \
+      || die 4 "Failed to create applet symlink ${applet@Q}"
     created+=1
   else
     warn "Applet ${applet@Q} not available in busybox"
@@ -99,10 +99,10 @@ done
 success "Created ${created} symlinks (${skipped} skipped)"
 
 # Add busybox binary and env to BIN_DIR so it's a self-contained /usr/bin
-cp /usr/bin/busybox "${BIN_DIR}/busybox"
-chmod 755 "${BIN_DIR}/busybox"
-cp /usr/bin/env "${BIN_DIR}/env"
-chmod 755 "${BIN_DIR}/env"
+install -m 755 /usr/bin/busybox "${BIN_DIR}/busybox" \
+  || die 4 "Failed to install busybox into ${BIN_DIR@Q}"
+install -m 755 /usr/bin/env "${BIN_DIR}/env" \
+  || die 4 "Failed to install env into ${BIN_DIR@Q}"
 success "Copied busybox and env binaries to ${BIN_DIR}"
 
 # Replace key busybox applets with coreutils versions for full flag compatibility
@@ -113,9 +113,8 @@ declare -ra COREUTILS_CMDS=(
 )
 for cmd in "${COREUTILS_CMDS[@]}"; do
   if [[ -x "/usr/bin/${cmd}" ]]; then
-    rm -f "${BIN_DIR}/${cmd}"
-    cp "/usr/bin/${cmd}" "${BIN_DIR}/${cmd}"
-    chmod 755 "${BIN_DIR}/${cmd}"
+    install -m 755 "/usr/bin/${cmd}" "${BIN_DIR}/${cmd}" \
+      || die 4 "Failed to install coreutils ${cmd@Q} into ${BIN_DIR@Q}"
   fi
 done
 success "Installed coreutils overrides for ${#COREUTILS_CMDS[@]} commands"
@@ -123,8 +122,8 @@ success "Installed coreutils overrides for ${#COREUTILS_CMDS[@]} commands"
 # Add editors if available
 for editor in joe nano; do
   if command -v "$editor" >/dev/null; then
-    cp "$(command -v "$editor")" "${BIN_DIR}/${editor}"
-    chmod 755 "${BIN_DIR}/${editor}"
+    install -m 755 "$(command -v "$editor")" "${BIN_DIR}/${editor}" \
+      || die 4 "Failed to install editor ${editor@Q} into ${BIN_DIR@Q}"
     success "Copied ${editor} to ${BIN_DIR}"
   fi
 done
@@ -165,13 +164,18 @@ if [[ -z "$YATTI_IP" ]]; then
 else
   declare -r NFT_CONF=/etc/nftables.d/yatti-shell.conf
 
-  # Check if nftables.d include exists in main config
   install -d -m 755 /etc/nftables.d
 
+  # NOTE: `meta skgid` matches the socket owner's PRIMARY (effective) GID only,
+  # never supplementary groups. yatti-user-add therefore creates users with
+  # ${GROUP_NAME} as their primary group; a supplementary membership would make
+  # every rule below a silent no-op.
   cat > "$NFT_CONF" <<NFTEOF
 #!/usr/sbin/nft -f
 # YaTTi Shell — restrict yatti-shell group to yatti.id:443 only
 # Resolved IP: ${YATTI_IP} (re-run yatti-shell-setup if DNS changes)
+# skgid matches PRIMARY group only — sandbox users must have ${GROUP_NAME}
+# as their primary group (yatti-user-add does this).
 
 table inet yatti-shell {
   chain output {
@@ -189,11 +193,39 @@ table inet yatti-shell {
 }
 NFTEOF
 
+  # Validate before loading
+  if ! nft -c -f "$NFT_CONF"; then
+    die 4 "Generated nftables rules failed validation: ${NFT_CONF}"
+  fi
+
   # Load the rules
   if nft -f "$NFT_CONF" 2>/dev/null; then
     success "nftables rules loaded (yatti.id=${YATTI_IP})"
   else
     warn "Failed to load nftables rules — load manually: nft -f ${NFT_CONF}"
+  fi
+
+  # Persist across reboots: main config must include /etc/nftables.d and the
+  # nftables service must be enabled, or the rules exist only until shutdown
+  if [[ -f /etc/nftables.conf ]]; then
+    if ! grep -qE '^[[:space:]]*include[[:space:]]+"/etc/nftables\.d/\*\.conf"' /etc/nftables.conf; then
+      cp -a /etc/nftables.conf "/etc/nftables.conf.bak-yatti-$(date +%Y%m%d)" \
+        || die 4 'Failed to back up /etc/nftables.conf — not modifying it'
+      printf '\ninclude "/etc/nftables.d/*.conf"\n' >> /etc/nftables.conf \
+        || die 4 'Failed to append include to /etc/nftables.conf'
+      success 'Added include "/etc/nftables.d/*.conf" to /etc/nftables.conf (backup saved)'
+    else
+      info "nftables.d include already present in /etc/nftables.conf"
+    fi
+  else
+    warn "/etc/nftables.conf not found — add 'include \"/etc/nftables.d/*.conf\"' to your nftables boot config manually"
+  fi
+  if ! systemctl is-enabled nftables >/dev/null 2>&1; then
+    if systemctl enable nftables >/dev/null 2>&1; then
+      success "Enabled nftables service (rules now persist across reboots)"
+    else
+      warn "Could not enable nftables service — rules will NOT survive a reboot"
+    fi
   fi
 fi
 
@@ -205,7 +237,7 @@ Setup complete. Next steps:
   1. Install launcher:  sudo install -m 755 ${SCRIPT_DIR}/yatti-shell-launcher /usr/local/bin/
   2. Add SSH config:    sudo install -m 644 ${SCRIPT_DIR}/50-yatti-shell.conf /etc/ssh/sshd_config.d/
   3. Reload SSH:        sudo systemctl reload sshd
-  4. Add a user:        sudo ${SCRIPT_DIR}/yatti-user-add <username> <ssh-pubkey> <api-key>
+  4. Add a user:        sudo ${SCRIPT_DIR}/yatti-user-add <username> '<ssh-pubkey>'  (API key prompted)
 
 EOF
 

@@ -73,7 +73,7 @@ help:
 	@echo "  sudo make install"
 	@echo "  sudo make setup"
 	@echo "  sudo systemctl reload sshd"
-	@echo "  sudo yatti-user-add <user> <ssh-key> <api-key>"
+	@echo "  sudo yatti-user-add <user> '<ssh-key>'   # API key prompted, never on argv"
 	@echo ""
 	@echo "Variables:"
 	@echo "  PREFIX     $(PREFIX)"
