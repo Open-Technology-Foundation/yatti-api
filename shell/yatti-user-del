@@ -4,36 +4,41 @@ set -euo pipefail
 shopt -s inherit_errexit
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
 
-declare -r PROG=${0##*/}
+declare -r SCRIPT_NAME=${0##*/}
+declare -r VERSION='1.0.0'
 declare -r ARCHIVE_DIR=/var/backups/yatti-shell
 declare -r GROUP_NAME=yatti-shell
 
-_msg() { >&2 printf '%s: %s\n' "$PROG" "$1"; }
-info()    { _msg "$1"; }
+_msg() { >&2 printf '%s: %s\n' "$SCRIPT_NAME" "$1"; }
 success() { _msg "OK: $1"; }
 die()     { _msg "ERROR: $2"; exit "$1"; }
 
 usage() {
-  cat >&2 <<EOF
-Usage: ${PROG} [-n|--no-archive] <username>
+  local -i rc=${1:-2}
+  ((rc == 0)) || exec >&2
+  cat <<USAGE
+Usage: $SCRIPT_NAME [-n|--no-archive] <username>
 
 Options:
   -n, --no-archive  Delete user data without archiving
+  -V, --version     Print version and exit
 
-By default, conversations are archived to ${ARCHIVE_DIR}/ before deletion.
-EOF
-  exit "${1:-2}"
+By default, conversations are archived to $ARCHIVE_DIR/ before deletion.
+USAGE
+  exit "$rc"
 }
 
-(( EUID == 0 )) || die 1 "Must run as root"
+(( EUID == 0 )) || die 1 'Must run as root'
 
 # Parse options
+
 declare -i ARCHIVE=1
-while [[ $# -gt 0 ]]; do
+while (($#)); do
   case $1 in
     -n|--no-archive) ARCHIVE=0; shift ;;
     -h|--help)       usage 0 ;;
-    -*)              die 2 "Unknown option: $1" ;;
+    -V|--version)    echo "$SCRIPT_NAME $VERSION"; exit 0 ;;
+    -*)              die 2 "Unknown option ${1@Q}" ;;
     *)               break ;;
   esac
 done
@@ -42,33 +47,33 @@ done
 declare -r USERNAME=$1
 
 # Validate user exists
-id "$USERNAME" >/dev/null 2>&1 || die 3 "User ${USERNAME@Q} not found"
+id "$USERNAME" &>/dev/null || die 3 "User ${USERNAME@Q} not found"
 
 # Safety: only ever delete members of the yatti-shell group. Without this
 # check the script would happily remove ANY system account, home and all.
 if ! id -nG "$USERNAME" 2>/dev/null | tr ' ' '\n' | grep -qx "$GROUP_NAME"; then
-  die 3 "User ${USERNAME@Q} is not a ${GROUP_NAME} member — refusing to delete"
+  die 3 "User ${USERNAME@Q} is not a $GROUP_NAME member — refusing to delete"
 fi
 
-# ── Archive ───────────────────────────────────────────────────────────────────
+# Archive
 
-declare -r USER_HOME="/home/${USERNAME}"
-declare -r CONV_DIR="${USER_HOME}/conversations"
+declare -r USER_HOME="/home/$USERNAME"
+declare -r CONV_DIR="$USER_HOME/conversations"
 
 if (( ARCHIVE )) && [[ -d "$CONV_DIR" ]]; then
-  install -d -m 700 "$ARCHIVE_DIR"
+  install -d -m 700 "$ARCHIVE_DIR" || die 5 "Failed to create archive directory ${ARCHIVE_DIR@Q}"
   declare -- ARCHIVE_FILE
-  ARCHIVE_FILE="${ARCHIVE_DIR}/${USERNAME}-$(date +%Y%m%d-%H%M%S).tar.gz"
+  ARCHIVE_FILE="$ARCHIVE_DIR/$USERNAME-$(printf '%(%Y%m%d-%H%M%S)T' -1).tar.gz"
   declare -r ARCHIVE_FILE
   # Archive is the safety net for the deletion below — a failed archive must
   # abort, not silently proceed to destroy the user's data
   tar -czf "$ARCHIVE_FILE" -C "$USER_HOME" conversations \
-    || die 4 "Archiving failed — user NOT deleted (use --no-archive to skip archiving)"
-  chmod 600 "$ARCHIVE_FILE"
-  success "Archived conversations to ${ARCHIVE_FILE}"
+    || die 4 'Archiving failed — user NOT deleted (use --no-archive to skip archiving)'
+  chmod 600 "$ARCHIVE_FILE" || die 5 "Failed to restrict permissions on ${ARCHIVE_FILE@Q}"
+  success "Archived conversations to $ARCHIVE_FILE"
 fi
 
-# ── Remove User ───────────────────────────────────────────────────────────────
+# Remove user
 
 # Kill any running sessions
 pkill -u "$USERNAME" 2>/dev/null || true
@@ -76,6 +81,6 @@ pkill -u "$USERNAME" 2>/dev/null || true
 deluser --remove-home "$USERNAME" 2>/dev/null \
   || userdel -r "$USERNAME" 2>/dev/null \
   || die 4 "Failed to remove user ${USERNAME@Q}"
-success "Removed user ${USERNAME} and home directory"
+success "Removed user $USERNAME and home directory"
 
 #fin

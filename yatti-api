@@ -2,10 +2,12 @@
 # YaTTi API Client - A command-line interface for the YaTTi REST API
 set -euo pipefail
 shopt -s inherit_errexit shift_verbose extglob nullglob
-if [[ "${YATTI_TEST_MODE:-0}" != "1" ]]; then
+if [[ "${YATTI_TEST_MODE:-0}" != '1' ]]; then
   export PATH=/usr/local/bin:/usr/bin:/bin
 fi
 command -v curl >/dev/null || { >&2 echo 'Error: curl required (apt install curl)'; exit 18; }
+command -v jq >/dev/null || { >&2 echo 'Error: jq required (apt install jq)'; exit 18; }
+command -v bc >/dev/null || { >&2 echo 'Error: bc required (apt install bc)'; exit 18; }
 
 # Script metadata
 declare -r VERSION='1.4.3'
@@ -20,7 +22,7 @@ declare -r SCRIPT_NAME=${SCRIPT_PATH##*/}
 declare -r API_BASE=${YATTI_API_BASE:-https://yatti.id/v1}
 # Validate API_BASE if overridden (security: prevent endpoint hijacking)
 # Skip validation in test mode (YATTI_TEST_MODE=1)
-if [[ -n "${YATTI_API_BASE:-}" ]] && [[ "${YATTI_TEST_MODE:-0}" != "1" ]]; then
+if [[ -n "${YATTI_API_BASE:-}" ]] && [[ "${YATTI_TEST_MODE:-0}" != '1' ]]; then
   [[ "$YATTI_API_BASE" =~ ^https://yatti\.id(/|$) ]] || {
     >&2 echo 'Error: YATTI_API_BASE must be https://yatti.id'
     exit 22
@@ -45,7 +47,8 @@ declare -i VERBOSE=${VERBOSE:-0}
 declare -- UPDATE_GPG_HOME='' UPDATE_SIG_FILE=''
 # Colour definitions
 if [[ -t 1 && -t 2 ]]; then
-  declare -r RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' BOLD_CYAN=$'\033[1;36m' NC=$'\033[0m'
+  declare -r RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m'
+  declare -r CYAN=$'\033[0;36m' BOLD_CYAN=$'\033[1;36m' NC=$'\033[0m'
 else
   declare -r RED='' GREEN='' YELLOW='' CYAN='' BOLD_CYAN='' NC=''
 fi
@@ -95,7 +98,7 @@ validate_path_segment() {
 # Exits with status 22 (EINVAL) on validation failure.
 validate_query_param() {
   local -- value=$1 name=${2:-parameter} type=${3:-string}
-  case "$type" in
+  case $type in
     integer)
       [[ "$value" =~ ^[0-9]+$ ]] || die 22 "Invalid $name: must be a non-negative integer"
       ;;
@@ -151,7 +154,8 @@ api_request() {
   local -- method=$1 endpoint=$2
   shift 2
   local -a curl_args=("$@")
-  local -- api_key response http_code
+  local -- api_key response
+  local -i http_code
   local -i attempt=0 backoff=1 curl_exit=0
 
   api_key=$(load_api_key)
@@ -195,8 +199,10 @@ api_request() {
       fi
     fi
 
-    http_code=$(tail -1 <<< "$response" | sed 's/__HTTP_CODE__//')
-    response=$(sed '$d' <<< "$response")
+    # Trailer parsing via parameter expansion (no forks): the -w trailer is
+    # always the final line, "\n__HTTP_CODE__<code>"
+    http_code=${response##*__HTTP_CODE__}
+    response=${response%$'\n'__HTTP_CODE__*}
 
     if ((http_code >= 200 && http_code < 300)); then
       echo "$response"
@@ -210,7 +216,9 @@ api_request() {
       # Non-retryable error or max retries exceeded
       if ((VERBOSE)) || ((http_code >= 400)); then
         error "HTTP $http_code"
-        [[ -n "$response" ]] && >&2 jq -r '.error.message // .message // .' <<< "$response" 2>/dev/null || >&2 echo "$response"
+        [[ -n "$response" ]] \
+          && >&2 jq -r '.error.message // .message // .' <<< "$response" 2>/dev/null \
+          || >&2 echo "$response"
       fi
       return 1
     fi
@@ -358,12 +366,15 @@ cmd_knowledgebases() {
         # Fetch KB list and display with long descriptions from API
         while IFS= read -r kb_name; do
           # ||: soft-fail: one unreachable KB must not abort the whole listing
-          long_desc=$(api_request GET /knowledgebases/"$kb_name" 2>/dev/null | jq -r '.data.long_description // empty') ||:
+          long_desc=$(api_request GET /knowledgebases/"$kb_name" 2>/dev/null \
+            | jq -r '.data.long_description // empty') ||:
           [[ -n "$long_desc" ]] || long_desc='No long description available'
           printf '\n%s%s%s\n%s\n' "$BOLD_CYAN" "$kb_name" "$NC" "$long_desc"
         done < <(api_request GET /knowledgebases | jq -r '.data.knowledgebases[].name' 2>/dev/null)
       else
-        api_request GET /knowledgebases | jq -r '.data.knowledgebases[] | "\(.name) - \(.description // "No description")"' 2>/dev/null || api_request GET /knowledgebases | format_json
+        api_request GET /knowledgebases \
+          | jq -r '.data.knowledgebases[] | "\(.name) - \(.description // "No description")"' 2>/dev/null \
+          || api_request GET /knowledgebases | format_json
       fi
       ;;
     get)
@@ -477,7 +488,7 @@ QUERY
     [[ ! -L "$query_file" ]] || warn 'Query file is a symlink - ensure target is intended'
     query_text=$(< "$query_file")
     info "Read query from file (${#query_text} characters)"
-  elif [[ "$query_text" == "-" ]]; then
+  elif [[ "$query_text" == '-' ]]; then
     # Read from stdin explicitly
     query_text=$(cat)
     info "Read query from stdin (${#query_text} characters)"
@@ -588,7 +599,8 @@ QUERY
       if ((context_only)); then
         info 'Contexts:'
         # Display contexts with source and content
-        jq -r '.data.contexts[]? | "\n[\(.source | split("/") | .[-1])]\n\(.content)\n"' <<< "$response" 2>/dev/null || true
+        jq -r '.data.contexts[]? | "\n[\(.source | split("/") | .[-1])]\n\(.content)\n"' \
+          <<< "$response" 2>/dev/null ||:
       else
         info 'Answer:'
         echo "$answer"
@@ -596,7 +608,7 @@ QUERY
         # Show contexts if verbose
         if ((VERBOSE)); then
           info 'Contexts:'
-          jq -r '.data.contexts[]?' <<< "$response" 2>/dev/null || true
+          jq -r '.data.contexts[]?' <<< "$response" 2>/dev/null ||:
         fi
       fi
     fi
@@ -615,10 +627,14 @@ cmd_history() {
   [[ -z "$kb_filter" ]] || validate_path_segment "$kb_filter" 'knowledgebase filter'
 
   local -- params="?limit=$limit"
-  [[ -z "$kb_filter" ]] || params="${params}&knowledgebase=$kb_filter"
+  [[ -z "$kb_filter" ]] || params="$params&knowledgebase=$kb_filter"
 
   info 'Query History:'
-  api_request GET /query"$params" | jq -r '.data.queries[] | "\(.created_at | split("T")[0]) | \(.knowledgebase) | \(.query) | \(.status)"' 2>/dev/null || api_request GET /query"$params" | format_json
+  local -r history_fmt='.data.queries[]
+    | "\(.created_at | split("T")[0]) | \(.knowledgebase) | \(.query) | \(.status)"'
+  api_request GET /query"$params" \
+    | jq -r "$history_fmt" 2>/dev/null \
+    || api_request GET /query"$params" | format_json
 }
 
 # Command: get query
@@ -707,14 +723,14 @@ cmd_docs() {
       ;;
 
     *)
-      die 22 "Unknown documentation type: ${doc_type@Q}" "Available: user, api, technical, list"
+      die 22 "Unknown documentation type: ${doc_type@Q}" 'Available: user, api, technical, list'
       ;;
   esac
 }
 
 # Command: help
 cmd_help() {
-  cat <<EOF
+  cat <<HELP
 $SCRIPT_NAME $VERSION - YaTTi API Client
 
 Usage: $SCRIPT_NAME [command] [options]
@@ -753,7 +769,7 @@ Configuration:
   API key file: $API_KEY_FILE
 
 For more information, visit: https://yatti.id/admin/
-EOF
+HELP
 }
 
 # Command: version
@@ -891,26 +907,28 @@ verify_update_signature() {
   return "$rc"
 }
 
+# Cleanup handler for cmd_update's temporary resources. Relies on dynamic
+# scoping for ${temp_file:-} (cmd_update's local) plus the UPDATE_* globals
+# populated by verify_update_signature.
+cleanup_temp_file() {
+  trap - EXIT INT TERM
+  if [[ -n "${temp_file:-}" && -f "${temp_file:-}" ]]; then
+    rm -f "$temp_file"
+  fi
+  # Verification-time resources (populated by verify_update_signature)
+  if [[ -n "${UPDATE_SIG_FILE:-}" ]]; then
+    rm -f "$UPDATE_SIG_FILE"
+  fi
+  if [[ -n "${UPDATE_GPG_HOME:-}" ]]; then
+    rm -rf "$UPDATE_GPG_HOME"
+  fi
+}
+
 # Command: update
 cmd_update() {
   local -i check_only=0 force=0
   local -- temp_file=''
 
-  # Cleanup function for temporary files
-  # Note: Use ${temp_file:-} to handle case where local var is out of scope
-  cleanup_temp_file() {
-    trap - EXIT INT TERM
-    if [[ -n "${temp_file:-}" && -f "${temp_file:-}" ]]; then
-      rm -f "$temp_file"
-    fi
-    # Verification-time resources (populated by verify_update_signature)
-    if [[ -n "${UPDATE_SIG_FILE:-}" ]]; then
-      rm -f "$UPDATE_SIG_FILE"
-    fi
-    if [[ -n "${UPDATE_GPG_HOME:-}" ]]; then
-      rm -rf "$UPDATE_GPG_HOME"
-    fi
-  }
   trap 'cleanup_temp_file' EXIT
   # Signal handlers must terminate, not return control mid-update
   trap 'cleanup_temp_file; exit 130' INT
@@ -968,7 +986,8 @@ cmd_update() {
   local -i update_available
   local -- latest_version
   read -r update_available latest_version < <(
-    jq -r '[(if .data.update_available then "1" else "0" end), .data.latest_version // ""] | @tsv' <<< "$version_response"
+    jq -r '[(if .data.update_available then "1" else "0" end), .data.latest_version // ""] | @tsv' \
+      <<< "$version_response"
   )
   
   if ((!update_available && !force)); then
@@ -1127,7 +1146,7 @@ cmd_update() {
 
 main() {
   local -- command=${1:-help}
-  shift || true
+  (($# == 0)) || shift
 
   # Ensure config directory exists
   #shellcheck disable=SC2174  # -m only applies to deepest dir, which is intentional

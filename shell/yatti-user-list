@@ -4,19 +4,16 @@ set -euo pipefail
 shopt -s inherit_errexit
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
 
-declare -r PROG=${0##*/}
+declare -r SCRIPT_NAME=${0##*/}
 declare -r GROUP_NAME=yatti-shell
 
 # Message helpers
-_msg() { >&2 printf '%s: %s\n' "$PROG" "$1"; }
-info()    { _msg "$1"; }
-success() { _msg "OK: $1"; }
-die()     { _msg "ERROR: $2"; exit "$1"; }
+_msg() { >&2 printf '%s: %s\n' "$SCRIPT_NAME" "$1"; }
+die()  { _msg "ERROR: $2"; exit "$1"; }
 
 # Check group exists
-if ! getent group "$GROUP_NAME" >/dev/null 2>&1; then
-  echo "No ${GROUP_NAME} group found — run yatti-shell-setup first" >&2
-  exit 1
+if ! getent group "$GROUP_NAME" &>/dev/null; then
+  die 1 "No $GROUP_NAME group found — run yatti-shell-setup first"
 fi
 
 # Get group members. `getent group` lists only SUPPLEMENTARY members;
@@ -38,33 +35,33 @@ done < <(
 )
 
 if (( ${#USERS[@]} == 0 )); then
-  echo "No YaTTi Shell users configured."
+  echo 'No YaTTi Shell users configured.'
   exit 0
 fi
 
-printf '%-16s  %6s  %-20s  %s\n' "USERNAME" "CONVOS" "LAST LOGIN" "STATUS"
-printf '%-16s  %6s  %-20s  %s\n' "--------" "------" "----------" "------"
+printf '%-16s  %6s  %-20s  %s\n' 'USERNAME' 'CONVOS' 'LAST LOGIN' 'STATUS'
+printf '%-16s  %6s  %-20s  %s\n' '--------' '------' '----------' '------'
 declare -- user user_home last_login login_info status
 declare -i conv_count
 for user in "${USERS[@]}"; do
   # Count conversations
   conv_count=0
   user_home=$(getent passwd "$user" | cut -d: -f6) || continue
-  if [[ -d "${user_home}/conversations" ]]; then
-    conv_count=$(find "${user_home}/conversations" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+  if [[ -d "$user_home/conversations" ]]; then
+    conv_count=$(find "$user_home/conversations" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
   fi
 
   # Last login
   last_login='-'
   login_info=$(lastlog -u "$user" 2>/dev/null | tail -1) || true
-  if [[ "$login_info" != *"Never logged in"* ]] && [[ -n "$login_info" ]]; then
+  if [[ "$login_info" != *'Never logged in'* ]] && [[ -n "$login_info" ]]; then
     last_login=$(echo "$login_info" | awk '{print $4, $5, $6, $7, $9}') || last_login='-'
   fi
 
   # Online status
   status='offline'
-  if who | grep -q "^${user} "; then
-    status="online"
+  if who | grep -q "^$user "; then
+    status='online'
   fi
 
   printf '%-16s  %6d  %-20s  %s\n' "$user" "$conv_count" "$last_login" "$status"

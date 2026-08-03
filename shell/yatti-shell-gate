@@ -7,13 +7,14 @@ set -euo pipefail
 shopt -s inherit_errexit
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
 
-declare -r PROG=${0##*/}
+declare -r SCRIPT_NAME=${0##*/}
 
 # Scrub loader-influencing variables before any exec — this is an SSH
 # ForceCommand gatekeeper and must not honour session-supplied loader hooks
-unset LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT BASH_ENV ENV
+unset LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT BASH_ENV ENV \
+      PYTHONPATH PERL5LIB RUBYLIB NODE_PATH
 
-case "${SSH_ORIGINAL_COMMAND:-}" in
+case ${SSH_ORIGINAL_COMMAND:-} in
   '')
     # Interactive session → YaTTi shell
     exec /usr/local/bin/yatti-shell-launcher
@@ -26,7 +27,8 @@ case "${SSH_ORIGINAL_COMMAND:-}" in
     # Legacy scp (scp -O) would exec an unsandboxed, read-write scp on the
     # host — rejected. Modern scp speaks SFTP and is served read-only by the
     # sftp-server branch above.
-    >&2 printf '%s: Only interactive shell and read-only SFTP export are allowed (use sftp or modern scp).\n' "$PROG"
+    >&2 printf '%s: Only interactive shell and read-only SFTP export are allowed (use sftp or modern scp).\n' \
+      "$SCRIPT_NAME"
     exit 1
     ;;
 esac
