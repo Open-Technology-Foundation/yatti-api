@@ -34,59 +34,11 @@ teardown() {
   [[ "$status" -eq 0 ]]
 }
 
-# Test: GPG functions exist and are callable
-
-@test "verify_update_signature function exists in script" {
-  run grep -c 'verify_update_signature()' ./yatti-api
-  [[ "$output" -ge 1 ]]
-}
-
-@test "import_update_pubkey function exists in script" {
-  run grep -c 'import_update_pubkey()' ./yatti-api
-  [[ "$output" -ge 1 ]]
-}
-
-# Test: GPG verification returns correct codes
-
-@test "GPG verification returns 1 (unavailable) when signature endpoint fails" {
-  # This tests the soft-fail behavior
-  # When the signature endpoint returns 404 or connection fails,
-  # verify_update_signature should return 1 (not 2)
-  # We test this indirectly by checking the warn message pattern exists
-  run grep -c 'Signature verification unavailable' ./yatti-api
-  [[ "$output" -ge 1 ]]
-}
-
-@test "GPG verification returns 2 (failure) when signature doesn't match" {
-  # This tests the hard-fail behavior
-  # We verify the error message pattern exists in the script
-  run grep -c 'GPG signature verification failed' ./yatti-api
-  [[ "$output" -ge 1 ]]
-}
-
-# Test: GPG key fingerprint pinning
-
-@test "GPG_KEY_FINGERPRINT constant is defined in script" {
-  run grep -c "declare -r GPG_KEY_FINGERPRINT=" ./yatti-api
-  [[ "$output" -ge 1 ]]
-}
-
-# Behavioral fingerprint-pinning coverage lives in test_update_helpers.bats
-@test "pubkey_file_fingerprint function exists in script" {
-  run grep -c 'pubkey_file_fingerprint()' ./yatti-api
-  [[ "$output" -ge 1 ]]
-}
-
-@test "GPG fingerprint mismatch warning exists in script" {
-  # This tests that the MITM attack warning is present
-  run grep -c 'fingerprint mismatch - possible MITM attack' ./yatti-api
-  [[ "$output" -ge 1 ]]
-}
-
-@test "GPG key pinning returns code 2 on fingerprint mismatch" {
-  # Verify the return code 2 is used for fingerprint mismatch
-  run grep -c 'return 2.*# Hard fail - fingerprint' ./yatti-api
-  [[ "$output" -ge 1 ]]
-}
+# NOTE: this file previously held seven grep-the-source "tests" that asserted
+# strings existed in the script — zero behavioral coverage (the functions
+# could have been rewritten to no-ops without a failure). Real behavioral
+# coverage of signature verification and fingerprint pinning now lives in
+# tests/unit/test_update_helpers.bats: actual key generation, actual signing,
+# actual verification, tamper detection, and pin-mismatch hard-fail.
 
 #fin

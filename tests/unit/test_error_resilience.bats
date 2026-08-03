@@ -17,38 +17,42 @@ teardown() {
 # Malformed Response Tests
 # ============================================================
 
-@test "api_request handles incomplete JSON response gracefully" {
-  # Arrange - truncated JSON
+@test "non-JSON body on 200 is passed through raw, not swallowed" {
+  # Arrange - truncated JSON that jq cannot parse
   set_mock_curl_response '{"data":{"incomplete":' "200"
 
   # Act
   run ./yatti-api status
 
-  # Assert - should not crash, may show parsing error
-  # The important thing is it doesn't cause an unhandled error
-  [[ "$status" -eq 0 ]] || [[ "$output" == *"parse"* ]] || true
+  # Assert - the raw body must reach the user; silently printing nothing
+  # would hide a real (if malformed) server response
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *'{"data":{"incomplete":'* ]]
 }
 
-@test "api_request handles non-JSON 200 response" {
+@test "HTML body on 200 is passed through raw" {
   # Arrange - HTML error page returned instead of JSON
   set_mock_curl_response '<!DOCTYPE html><html><body>Error</body></html>' "200"
 
   # Act
   run ./yatti-api status
 
-  # Assert - should handle gracefully
-  [[ "$status" -eq 0 ]] || true
+  # Assert
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *'<!DOCTYPE html>'* ]]
 }
 
-@test "api_request handles empty response body" {
-  # Arrange - empty body with 200 status
+@test "empty response body yields empty output and success" {
+  # Arrange - genuinely empty body with 200 status (mock preserves
+  # explicitly-empty MOCK_CURL_RESPONSE)
   set_mock_curl_response '' "200"
 
-  # Act
-  run ./yatti-api status
+  # Act - VERBOSE=0: the verbose request line on stderr is not the body
+  run env VERBOSE=0 ./yatti-api status
 
-  # Assert - should not crash
-  true  # Just checking it doesn't crash
+  # Assert - no crash, no phantom content
+  [[ "$status" -eq 0 ]]
+  [[ -z "$output" ]]
 }
 
 @test "malformed JSON in error field gracefully handled" {
@@ -69,8 +73,9 @@ teardown() {
   # Act
   run ./yatti-api query -K testdb -q "test"
 
-  # Assert - should handle nulls gracefully
-  [[ "$status" -eq 0 ]] || true
+  # Assert - null response fields must not crash the formatter
+  [[ "$status" -eq 0 ]]
+  [[ "$output" != *'Error'* ]]
 }
 
 # ============================================================
@@ -95,6 +100,7 @@ teardown() {
 @test "standard error format displays message" {
   # Arrange - standard error response format
   set_mock_curl_response '{"error":{"message":"Rate limit exceeded","code":429}}' "429"
+  export YATTI_MAX_RETRIES=1  # failure-path test: skip retry backoff sleeps
 
   # Act
   run ./yatti-api status
@@ -106,6 +112,7 @@ teardown() {
 @test "alternative error format with top-level message" {
   # Arrange - simpler error format
   set_mock_curl_response '{"message":"Service unavailable"}' "503"
+  export YATTI_MAX_RETRIES=1  # failure-path test: skip retry backoff sleeps
 
   # Act
   run ./yatti-api status
@@ -117,6 +124,7 @@ teardown() {
 @test "error response with no message field" {
   # Arrange - error with just code
   set_mock_curl_response '{"error":{"code":500}}' "500"
+  export YATTI_MAX_RETRIES=1  # failure-path test: skip retry backoff sleeps
 
   # Act
   run ./yatti-api status
@@ -175,8 +183,9 @@ teardown() {
   # Act
   run ./yatti-api status
 
-  # Assert - should handle gracefully
-  [[ "$status" -eq 0 ]] || true
+  # Assert - a JSON array is valid JSON and must be pretty-printed
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *'"item"'* ]]
 }
 
 @test "handles response with nested arrays" {

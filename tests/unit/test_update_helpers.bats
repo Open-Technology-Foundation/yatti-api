@@ -107,6 +107,71 @@ generate_test_pubkey() {
   [[ "$status" -eq 1 ]]
 }
 
+# ============================================================
+# End-to-end signature verification (real keys, real signatures)
+# ============================================================
+
+# Generate a signing-capable key in $1 (homedir); echo its fingerprint.
+generate_signing_key() {
+  local -- home=$1
+  gpg --homedir "$home" --batch --passphrase '' --quick-gen-key \
+    'YaTTi Signer <signer@test.invalid>' ed25519 default never 2>/dev/null
+  gpg --homedir "$home" --with-colons --fingerprint 2>/dev/null \
+    | awk -F: '/^fpr:/{print $10; exit}'
+}
+
+# Common arrange: signing key, pinned fp override, cached pubkey, signed file.
+# Sets: SIGNER_HOME, UPDATE_FILE (and exports GPG_KEY_FINGERPRINT, MOCK_CURL_RESPONSE)
+setup_signed_update() {
+  SIGNER_HOME=$(mktemp -d "${BATS_TEST_TMPDIR}/signer.XXXXXX")
+  chmod 700 "$SIGNER_HOME"
+  export GPG_KEY_FINGERPRINT
+  GPG_KEY_FINGERPRINT=$(generate_signing_key "$SIGNER_HOME")
+  [[ -n "$GPG_KEY_FINGERPRINT" ]]
+
+  # Pre-seed a fresh pubkey cache so no pubkey download is needed
+  mkdir -p "$CONFIG_DIR"
+  gpg --homedir "$SIGNER_HOME" --armor --export > "$CONFIG_DIR/pubkey.asc" 2>/dev/null
+
+  # Sign a fake update; the mock serves the signature download
+  UPDATE_FILE="${BATS_TEST_TMPDIR}/update.bash"
+  printf '#!/bin/bash\necho updated\n' > "$UPDATE_FILE"
+  gpg --homedir "$SIGNER_HOME" --batch --passphrase '' --armor \
+    --detach-sign --output "${BATS_TEST_TMPDIR}/sig.asc" "$UPDATE_FILE" 2>/dev/null
+  export MOCK_CURL_RESPONSE
+  MOCK_CURL_RESPONSE=$(cat "${BATS_TEST_TMPDIR}/sig.asc")
+  export MOCK_CURL_HTTP_CODE=200
+}
+
+@test "verify_update_signature accepts a valid signature from the pinned key" {
+  skip_if_missing gpg
+  setup_signed_update
+
+  run verify_update_signature "$UPDATE_FILE"
+
+  [[ "$status" -eq 0 ]]
+}
+
+@test "verify_update_signature hard-fails (2) on a tampered file" {
+  skip_if_missing gpg
+  setup_signed_update
+  echo 'malicious change' >> "$UPDATE_FILE"
+
+  run verify_update_signature "$UPDATE_FILE"
+
+  [[ "$status" -eq 2 ]]
+}
+
+@test "verify_update_signature soft-fails (1) when signature download fails" {
+  skip_if_missing gpg
+  setup_signed_update
+  set_mock_curl_fail
+
+  run verify_update_signature "$UPDATE_FILE"
+
+  [[ "$status" -eq 1 ]]
+}
+
 @test "import_update_pubkey soft-fails (1) on non-key content" {
   skip_if_missing gpg
   set_mock_curl_response '<html>404 not found</html>' "200"

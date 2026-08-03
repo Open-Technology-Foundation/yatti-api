@@ -217,16 +217,18 @@ teardown() {
 # Connection Failure Retry Tests
 # ============================================================
 
-@test "connection timeout triggers retry" {
-  # Note: Testing actual timeout behavior is tricky with mock
-  # This test verifies the network failure path works
+@test "connection failure is retried MAX_RETRIES times before giving up" {
+  # Arrange - count mock-curl invocations across the retry loop
+  export MOCK_CURL_CALL_COUNT="${BATS_TEST_TMPDIR}/conn_fail_count"
+  echo 0 > "$MOCK_CURL_CALL_COUNT"
   set_mock_curl_fail
 
   # Act
   run ./yatti-api status
 
-  # Assert - should fail after retries
+  # Assert - fails, and actually attempted the full retry budget
   [[ "$status" -ne 0 ]]
+  [[ "$(get_mock_curl_call_count)" -eq 3 ]]
 }
 
 # ============================================================

@@ -83,11 +83,12 @@ if [[ -n "${MOCK_CURL_EXIT_CODE:-}" ]] && [[ "$MOCK_CURL_EXIT_CODE" != "0" ]]; t
 fi
 
 # Read mock data from environment if not set by call counter logic
-response="${response:-${MOCK_CURL_RESPONSE}}"
+response="${response:-${MOCK_CURL_RESPONSE-}}"
 http_code="${http_code:-${MOCK_CURL_HTTP_CODE:-200}}"
 
-# If no response set, use empty JSON object
-if [[ -z "$response" ]]; then
+# Default to empty JSON object ONLY when no response was configured at all;
+# an explicitly empty MOCK_CURL_RESPONSE means a genuinely empty body
+if [[ -z "$response" && -z "${MOCK_CURL_RESPONSE+set}" ]]; then
   response="{}"
 fi
 

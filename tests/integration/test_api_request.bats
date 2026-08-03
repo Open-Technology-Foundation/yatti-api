@@ -97,6 +97,7 @@ teardown() {
 @test "api_request returns error on 500 Server Error" {
   # Arrange
   set_mock_curl_response '{"error":{"message":"Internal server error"}}' "500"
+  export YATTI_MAX_RETRIES=1  # failure-path test: skip retry backoff sleeps
 
   # Act
   run ./yatti-api status
@@ -113,6 +114,7 @@ teardown() {
 @test "api_request handles network failure" {
   # Arrange
   set_mock_curl_fail
+  export YATTI_MAX_RETRIES=1  # failure-path test: skip retry backoff sleeps
 
   # Act
   run ./yatti-api status

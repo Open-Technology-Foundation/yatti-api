@@ -40,6 +40,9 @@ declare -ri CURL_MAX_TIME=${YATTI_TIMEOUT:-60}
 
 # Global variables
 declare -i VERBOSE=${VERBOSE:-0}
+# Update-flow temp resources — mirrored here so cmd_update's signal traps
+# can clean them up if interrupted mid-verification
+declare -- UPDATE_GPG_HOME='' UPDATE_SIG_FILE=''
 # Colour definitions
 if [[ -t 1 && -t 2 ]]; then
   declare -r RED=$'\033[0;31m' GREEN=$'\033[0;32m' YELLOW=$'\033[0;33m' CYAN=$'\033[0;36m' BOLD_CYAN=$'\033[1;36m' NC=$'\033[0m'
@@ -225,12 +228,21 @@ fetch_url() {
       "$1" -o "$2"
 }
 
-# Format JSON output
+# Format JSON output. Buffers stdin so that when jq rejects the input the
+# raw body can still be printed — piping straight into jq would consume the
+# stream, leaving a fallback `cat` nothing to read (silent output loss).
 format_json() {
-  if command -v jq &> /dev/null; then
-    jq --color-output '.' 2>/dev/null || cat
+  local -- input
+  input=$(cat)
+  if ! command -v jq &> /dev/null; then
+    printf '%s\n' "$input"
+    return 0
+  fi
+  # Colour only on a terminal — piped/redirected output stays clean
+  if [[ -t 1 ]]; then
+    jq --color-output '.' <<< "$input" 2>/dev/null || printf '%s\n' "$input"
   else
-    cat
+    jq '.' <<< "$input" 2>/dev/null || printf '%s\n' "$input"
   fi
 }
 
@@ -817,19 +829,11 @@ import_update_pubkey() {
 # it against $script_file using the imported key (via import_update_pubkey).
 # Returns: 0=signature verified, 1=verification unavailable (proceed with warning),
 #          2=verification failed or fingerprint mismatch (abort update)
-verify_update_signature() {
-  local -- script_file=$1
-  local -- sig_file="$script_file".sig
-  local -- gpg_home=''
-
-  # Check gpg is available
-  if ! command -v gpg &>/dev/null; then
-    warn 'GPG not installed - signature verification skipped'
-    return 1
-  fi
-
-  # Clean up signature file and throwaway keyring on every exit path
-  trap 'rm -f "$sig_file"; [[ -z "$gpg_home" ]] || rm -rf "$gpg_home"' RETURN
+# Inner logic for verify_update_signature (which owns cleanup of $2 and $3).
+# Args: $1=file to verify, $2=signature file path, $3=isolated GNUPGHOME
+# Returns: 0=verified, 1=unavailable (soft), 2=failed/mismatch (abort)
+verify_signature_with_keyring() {
+  local -- script_file=$1 sig_file=$2 gpg_home=$3
 
   # Download signature (soft fail if not available)
   if ! fetch_url "$API_BASE"/client/download.sig "$sig_file" 2>/dev/null; then
@@ -838,11 +842,6 @@ verify_update_signature() {
 
   # Check signature file is not empty
   [[ -s "$sig_file" ]] || return 1
-
-  # Isolated keyring: verification can only ever be satisfied by the pinned
-  # key imported below, not by arbitrary keys in the user's keyring
-  gpg_home=$(mktemp -d "${TMPDIR:-/tmp}"/yatti-gpg.XXXXXX) || return 1
-  chmod 700 "$gpg_home"
 
   # Import/refresh public key
   local -i pubkey_result=0
@@ -860,6 +859,38 @@ verify_update_signature() {
   return 2  # Verification failed - DO NOT proceed
 }
 
+verify_update_signature() {
+  local -- script_file=$1
+  local -- sig_file="$script_file".sig
+  local -- gpg_home
+
+  # Check gpg is available
+  if ! command -v gpg &>/dev/null; then
+    warn 'GPG not installed - signature verification skipped'
+    return 1
+  fi
+
+  # Isolated keyring: verification can only ever be satisfied by the pinned
+  # key imported by verify_signature_with_keyring, not by arbitrary keys in
+  # the user's personal keyring
+  gpg_home=$(mktemp -d "${TMPDIR:-/tmp}"/yatti-gpg.XXXXXX) || return 1
+  chmod 700 "$gpg_home"
+
+  # Mirror to globals so cmd_update's INT/TERM traps clean up on interrupt
+  UPDATE_GPG_HOME=$gpg_home
+  UPDATE_SIG_FILE=$sig_file
+
+  # Explicit cleanup wrapper — a RETURN trap would leak into nested functions
+  # under set -o functrace and is not safe for cleanup duty
+  local -i rc=0
+  verify_signature_with_keyring "$script_file" "$sig_file" "$gpg_home" || rc=$?
+  rm -f "$sig_file"
+  rm -rf "$gpg_home"
+  UPDATE_GPG_HOME=''
+  UPDATE_SIG_FILE=''
+  return "$rc"
+}
+
 # Command: update
 cmd_update() {
   local -i check_only=0 force=0
@@ -871,6 +902,13 @@ cmd_update() {
     trap - EXIT INT TERM
     if [[ -n "${temp_file:-}" && -f "${temp_file:-}" ]]; then
       rm -f "$temp_file"
+    fi
+    # Verification-time resources (populated by verify_update_signature)
+    if [[ -n "${UPDATE_SIG_FILE:-}" ]]; then
+      rm -f "$UPDATE_SIG_FILE"
+    fi
+    if [[ -n "${UPDATE_GPG_HOME:-}" ]]; then
+      rm -rf "$UPDATE_GPG_HOME"
     fi
   }
   trap 'cleanup_temp_file' EXIT

@@ -93,23 +93,29 @@ teardown() {
 @test "query auto-detect ignores stdin when query already provided" {
   # Arrange
   set_mock_curl_response '{"data":{"query_id":"q7","response":"cmdline-query","metadata":{}}}' "200"
+  export MOCK_CURL_ARGS_FILE="${BATS_TEST_TMPDIR}/args"
 
   # Act - query provided on command line AND stdin piped (stdin should be ignored)
   run bash -c 'echo "stdin query" | ./yatti-api query -K testdb -q "cmdline query"'
 
-  # Assert - should use command line query, not stdin
+  # Assert - the payload actually SENT must carry the flag query, not stdin
   [[ "$status" -eq 0 ]]
+  grep -q 'cmdline query' "$MOCK_CURL_ARGS_FILE"
+  ! grep -q 'stdin query' "$MOCK_CURL_ARGS_FILE"
 }
 
 @test "query auto-detect ignores stdin when positional query provided" {
   # Arrange
   set_mock_curl_response '{"data":{"query_id":"q8","response":"positional-query","metadata":{}}}' "200"
+  export MOCK_CURL_ARGS_FILE="${BATS_TEST_TMPDIR}/args"
 
   # Act - positional query AND stdin piped
   run bash -c 'echo "stdin query" | ./yatti-api query testdb "positional query"'
 
-  # Assert - should use positional query
+  # Assert - the payload actually SENT must carry the positional query
   [[ "$status" -eq 0 ]]
+  grep -q 'positional query' "$MOCK_CURL_ARGS_FILE"
+  ! grep -q 'stdin query' "$MOCK_CURL_ARGS_FILE"
 }
 
 @test "query auto-detect with empty stdin fails" {
@@ -285,25 +291,31 @@ EOF'
 @test "query file input (-Q) takes precedence over stdin" {
   # Arrange
   set_mock_curl_response '{"data":{"query_id":"q22","response":"file-wins","metadata":{}}}' "200"
+  export MOCK_CURL_ARGS_FILE="${BATS_TEST_TMPDIR}/args"
   query_file="${BATS_TEST_TMPDIR}/query.txt"
   echo "query from file" > "$query_file"
 
   # Act - both file and stdin provided
   run bash -c "echo 'query from stdin' | ./yatti-api query -K testdb -Q '$query_file'"
 
-  # Assert - file should win
+  # Assert - the payload actually SENT must carry the file content
   [[ "$status" -eq 0 ]]
+  grep -q 'query from file' "$MOCK_CURL_ARGS_FILE"
+  ! grep -q 'query from stdin' "$MOCK_CURL_ARGS_FILE"
 }
 
 @test "query -q flag takes precedence over auto-detected stdin" {
   # Arrange
   set_mock_curl_response '{"data":{"query_id":"q23","response":"explicit-wins","metadata":{}}}' "200"
+  export MOCK_CURL_ARGS_FILE="${BATS_TEST_TMPDIR}/args"
 
   # Act - -q with explicit value and stdin
-  run bash -c 'echo "stdin" | ./yatti-api query -K testdb -q "explicit query"'
+  run bash -c 'echo "stdin content" | ./yatti-api query -K testdb -q "explicit query"'
 
-  # Assert
+  # Assert - the payload actually SENT must carry the explicit query
   [[ "$status" -eq 0 ]]
+  grep -q 'explicit query' "$MOCK_CURL_ARGS_FILE"
+  ! grep -q 'stdin content' "$MOCK_CURL_ARGS_FILE"
 }
 
 #fin

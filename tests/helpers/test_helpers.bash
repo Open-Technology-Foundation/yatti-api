@@ -87,6 +87,13 @@ reset_mock_curl_retries() {
   unset MOCK_CURL_CALL_COUNT MOCK_CURL_RESPONSES
 }
 
+# Reset ALL mock-curl state (single-response vars, failure modes, recording)
+reset_mock_curl() {
+  unset MOCK_CURL_RESPONSE MOCK_CURL_HTTP_CODE MOCK_CURL_FAIL \
+        MOCK_CURL_EXIT_CODE MOCK_CURL_EXIT_AFTER_BODY MOCK_CURL_ARGS_FILE
+  reset_mock_curl_retries
+}
+
 # Setup test environment
 setup_test_env() {
   # Create isolated test environment

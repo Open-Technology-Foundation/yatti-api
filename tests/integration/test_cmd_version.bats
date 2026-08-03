@@ -2,7 +2,6 @@
 # Integration tests for cmd_version() in yatti-api
 
 load '../helpers/test_helpers'
-load '../helpers/mocks'
 
 setup() {
   setup_test_env

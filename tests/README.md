@@ -382,16 +382,13 @@ set_mock_curl_response "body" "code"  # Set mock response (default code: 200)
 set_mock_curl_fail()                  # Simulate network failure
 ```
 
-Available in `tests/helpers/mocks.bash` (for unit tests):
+Additional helpers:
 
 ```bash
-# Mock curl (function-based for unit tests)
-mock_curl()                           # Setup curl mock
-reset_mock_curl()                     # Reset curl mock
-
-# Other mocks
-mock_install()                        # Mock install command
-mock_mktemp()                         # Mock mktemp command
+reset_mock_curl()                     # Reset ALL mock-curl state
+setup_mock_curl_retries "500:{}" ...  # Sequence of per-call responses
+MOCK_CURL_ARGS_FILE=<path>            # Record curl argv (+ resolved headers
+                                      # in <path>.headers) for assertions
 ```
 
 ## CI/CD Integration
