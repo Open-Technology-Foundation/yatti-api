@@ -252,7 +252,7 @@ EOF'
   set_mock_curl_response '{"data":{"query_id":"q19","response":"ok","metadata":{}}}' "200"
 
   # Act
-  run bash -c 'echo "test query" | ./yatti-api query -K testdb -q - -k 15 -t 0.3 -m gpt-5.2 --max-tokens 500'
+  run bash -c 'echo "test query" | ./yatti-api query -K testdb -q - -k 15 -t 0.3 -m gpt-5.6-terra --max-tokens 500'
 
   # Assert
   [[ "$status" -eq 0 ]]

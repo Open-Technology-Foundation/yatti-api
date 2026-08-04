@@ -138,7 +138,7 @@ Number of document contexts to retrieve (default: 5).
 LLM temperature 0.0\-2.0 (default: 0.0). Higher values produce more creative responses.
 .TP
 .BI \-m ", " \-\-model " NAME"
-LLM model to use (default: claude-sonnet-4-6). Supports models from OpenAI, Anthropic, and Google.
+LLM model to use (default: server\-assigned for your access level). Supports models from OpenAI (gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna), Anthropic (claude-fable-5, claude-opus-5, claude-sonnet-5, claude-haiku-4-5), and Ollama.
 .TP
 .BI \-s ", " \-\-context-scope " NUM"
 Context segments per result (default: 3, typically 1\-10).
@@ -234,7 +234,7 @@ Query with custom parameters:
 .RS
 .nf
 $ yatti-api query -K okusiresearch -q "PMA company requirements" \\
-    --top-k 10 --temperature 0.5 --model claude-sonnet-4-6
+    --top-k 10 --temperature 0.5 --model claude-sonnet-5
 .fi
 .RE
 .PP

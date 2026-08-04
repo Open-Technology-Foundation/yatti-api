@@ -66,6 +66,27 @@ teardown() {
   [[ "$status" -eq 0 ]]
 }
 
+# Server-assigned default model: the payload must omit the model key entirely
+# unless the user explicitly supplies -m/--model.
+
+@test "query payload omits model key when -m not given" {
+  set_mock_curl_response "$(jq -c '.query.success' "$FIXTURES_FILE")" "200"
+  export MOCK_CURL_ARGS_FILE="${BATS_TEST_TMPDIR}/args"
+
+  run ./yatti-api query -K test_kb -q "test"
+  [[ "$status" -eq 0 ]]
+  ! grep -q '"model"' "$MOCK_CURL_ARGS_FILE"
+}
+
+@test "query payload carries exactly the requested model when -m given" {
+  set_mock_curl_response "$(jq -c '.query.success' "$FIXTURES_FILE")" "200"
+  export MOCK_CURL_ARGS_FILE="${BATS_TEST_TMPDIR}/args"
+
+  run ./yatti-api query -K test_kb -q "test" -m gpt-5.6-terra
+  [[ "$status" -eq 0 ]]
+  grep -q '"model": "gpt-5.6-terra"' "$MOCK_CURL_ARGS_FILE"
+}
+
 @test "query command handles --context-scope option" {
   set_mock_curl_response "$(jq -c '.query.success' "$FIXTURES_FILE")" "200"
 
@@ -107,7 +128,7 @@ teardown() {
 @test "query command handles multiple options together" {
   set_mock_curl_response "$(jq -c '.query.success' "$FIXTURES_FILE")" "200"
 
-  run ./yatti-api query -K test_kb -q "test" -k 5 -t 0.7 -m gpt-5.1 -s 3
+  run ./yatti-api query -K test_kb -q "test" -k 5 -t 0.7 -m gpt-5.6-terra -s 3
   [[ "$status" -eq 0 ]]
 }
 

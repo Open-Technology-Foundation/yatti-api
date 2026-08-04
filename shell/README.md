@@ -121,7 +121,7 @@ $ query what is mindfulness?
 Or use flags for more control:
 
 ```
-$ query -q "what is mindfulness?" -m gpt-4o -k 10
+$ query -q "what is mindfulness?" -m gpt-5.6-luna -k 10
 $ query -K peraturan.go.id -q "apa hukum korupsi?"
 ```
 

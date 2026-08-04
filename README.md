@@ -488,7 +488,7 @@ yatti-api query -K <knowledgebase> -q - [OPTIONS]
 **Query Processing Options:**
 - `-k, --top-k NUM` - Number of context sources (default: 5)
 - `-t, --temperature NUM` - LLM temperature 0.0-2.0 (default: 0.0)
-- `-m, --model NAME` - LLM model (default: claude-sonnet-4-6)
+- `-m, --model NAME` - LLM model (default: server-assigned per access level — Basic: gpt-5.6-luna; Premium/Admin: claude-sonnet-5)
 - `-s, --context-scope NUM` - Context segments per result (default: 3)
 - `-c, --context-only` - Return only context without AI response
 - `-M, --max-tokens NUM` - Maximum response tokens
@@ -498,9 +498,14 @@ yatti-api query -K <knowledgebase> -q - [OPTIONS]
 - `--timeout SECONDS` - Query timeout in seconds (default: 60, max: 600)
 
 **Available Models:**
-- **Anthropic:** claude-sonnet-4-6 (default), claude-opus-4-6, claude-opus-4-5, claude-sonnet-4-5, claude-haiku-4-5
-- **OpenAI:** gpt-4o, gpt-4.1, and other GPT models
-- **Google:** gemini-2.5-pro, gemini-2.5-flash
+
+When `-m/--model` is omitted, the model key is left out of the request and the
+server assigns a default for your access level (Basic: gpt-5.6-luna;
+Premium/Admin: claude-sonnet-5).
+
+- **OpenAI:** gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna
+- **Anthropic:** claude-fable-5, claude-opus-5, claude-sonnet-5, claude-haiku-4-5 (older models such as claude-sonnet-4-6 remain valid)
+- **Ollama:** gemma3:27b, deepseek-v4-pro:cloud
 
 ### Knowledgebase Commands
 

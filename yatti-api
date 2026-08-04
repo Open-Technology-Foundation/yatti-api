@@ -395,7 +395,9 @@ cmd_knowledgebases() {
 
 # Command: query
 cmd_query() {
-  local -- kb_name='' query_text='' query_file='' temperature='0.0' model='gpt-5.5'
+  # model defaults to empty: the server injects a per-access-level default
+  # when the payload omits the model key entirely
+  local -- kb_name='' query_text='' query_file='' temperature='0.0' model=''
   local -i force_refresh=0 context_only=0
   # Numeric options are kept as strings (not -i) so malformed input is rejected
   # with a clear message below instead of crashing at assignment under set -u.
@@ -444,7 +446,7 @@ Options:
   -Q, --query-file FILE      Read query from file
   -k, --top-k NUM            Number of contexts to retrieve (default: $top_k)
   -t, --temperature NUM      LLM temperature 0.0-2.0 (default: $temperature)
-  -m, --model NAME           LLM model (default: $model)
+  -m, --model NAME           LLM model (default: server-assigned for your access level)
   -s, --context-scope NUM    Context segments per result (default: $context_scope, typically 1-10)
   -c, --context-only         Return only context without AI response
   -M, --max-tokens NUM       Maximum response tokens
@@ -455,7 +457,9 @@ Options:
   --timeout SECONDS          Query timeout in seconds (default: 60, max: 600)
                              Use higher values for large knowledgebases like jawawa
 
-Available models: All latest LLMs from OpenAI, Anthropic, and Google
+Available models: OpenAI (gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna),
+                  Anthropic (claude-fable-5, claude-opus-5, claude-sonnet-5,
+                  claude-haiku-4-5), plus Ollama models (e.g. gemma3:27b)
 QUERY
         return 0
         ;;
@@ -550,13 +554,15 @@ QUERY
     '{
       top_k: $top_k,
       temperature: $temperature,
-      model: $model,
       context_scope: $context_scope,
       force_refresh: ($force_refresh == 1),
       cache_ttl: $cache_ttl,
       timeout: $timeout,
       context_only: ($context_only == 1)
-    }')
+    }
+    # Only send model when the user asked for one; an absent key lets the
+    # server inject its per-access-level default
+    | if $model != "" then . + {model: $model} else . end')
 
   # Add optional fields in one jq call (avoids sequential jq invocations)
   if [[ -n "$max_tokens" ]] || [[ -n "$prompt_template" ]]; then
@@ -751,7 +757,7 @@ Commands:
 Query Examples:
   $SCRIPT_NAME query seculardharma "What is mindfulness?"
   $SCRIPT_NAME query -K jawawa -q "Who is Soeharto?"
-  $SCRIPT_NAME query -K ollama -q "Explain LLMs" --model gpt-5.2 --top-k 10
+  $SCRIPT_NAME query -K ollama -q "Explain LLMs" --model gpt-5.6-luna --top-k 10
   $SCRIPT_NAME query -K uv -q "Python programming" -c  # Context only
   $SCRIPT_NAME query -K appliedanthropology -q "participant observation" -p scholarly -M 2000
 
