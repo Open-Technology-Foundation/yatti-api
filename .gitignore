@@ -87,3 +87,6 @@ venv/
 *.sig
 *-pubkey.asc
 .archive/
+
+# Separate project, not part of this repository
+yatti-chat/
