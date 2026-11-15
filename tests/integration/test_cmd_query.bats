@@ -24,7 +24,10 @@ teardown() {
 }
 
 @test "query command requires query text" {
-  run ./yatti-api query -K seculardharma
+  # With no query text the script reads stdin unless it is a terminal, and
+  # run inherits the runner's stdin: an open pipe or socket (CI, ssh, an
+  # agent's shell) would block it forever. Give it an empty stdin.
+  run ./yatti-api query -K seculardharma < /dev/null
   [[ "$status" -eq 2 ]]
   [[ "$output" == *"Query text required"* ]]
 }
