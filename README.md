@@ -855,7 +855,13 @@ done
 
 ## Release Notes
 
-### v1.4.4 (Latest)
+### v1.4.5 (Latest)
+
+- **`version`** and **`configure`** say where the API key comes from (the key file or
+  `YATTI_API_KEY`) and no longer print any of its characters (`version` showed the last
+  four, `configure` the first and last eight)
+
+### v1.4.4
 
 - **`query --context-only`** prints the retrieved text when the server returns it
   without separate contexts, instead of printing nothing
@@ -902,7 +908,7 @@ Run `yatti-api update --check` to see available updates with changelog.
 
 ## Version
 
-Current version: **1.4.4**
+Current version: **1.4.5**
 
 ```bash
 yatti-api update --check    # Check for updates
