@@ -10,13 +10,13 @@ This test suite provides 95%+ code coverage with 274 test cases covering:
 - **Mock Infrastructure**: PATH-based curl mocking with environment variables
 - **Security Tests**: Validates file permissions, race conditions, and secure handling
 
-**Current Status**: 274 tests, 100% passing ✓
+**Current Status**: 266 tests, 100% passing ✓
 
 ## Directory Structure
 
 ```
 tests/
-├── unit/                       # Unit tests (102 tests)
+├── unit/                       # Unit tests (72 tests)
 │   ├── test_utils.bats         # trim(), s(), noarg(), decp() (16 tests)
 │   ├── test_version_compare.bats  # version_compare() (17 tests)
 │   ├── test_api_key.bats       # load_api_key() (4 tests)
@@ -25,7 +25,7 @@ tests/
 │   ├── test_large_payloads.bats   # Large query handling (8 tests)
 │   ├── test_unicode_handling.bats # Unicode/i18n support (15 tests)
 │   └── test_error_resilience.bats # Error handling (14 tests)
-├── integration/               # Integration tests (172 tests)
+├── integration/               # Integration tests (194 tests)
 │   ├── test_api_request.bats   # API request handling (10 tests)
 │   ├── test_cmd_configure.bats # Configure command (17 tests)
 │   ├── test_cmd_docs.bats      # Documentation command (12 tests)
@@ -37,7 +37,7 @@ tests/
 │   ├── test_cmd_status.bats    # Status command (6 tests)
 │   ├── test_cmd_update.bats    # Update command (10 tests)
 │   ├── test_cmd_users.bats     # Users command (16 tests)
-│   ├── test_cmd_version.bats   # Version command (5 tests)
+│   ├── test_cmd_version.bats   # Version command (9 tests)
 │   ├── test_retry_logic.bats   # Retry mechanism (15 tests)
 │   └── test_stdin_autodetect.bats # Stdin edge cases (23 tests)
 ├── helpers/                   # Test utilities
@@ -233,12 +233,13 @@ Tests for users command:
 - CRUD operations
 - Input validation
 
-#### test_cmd_version.bats (5 tests)
+#### test_cmd_version.bats (9 tests)
 Tests for version command:
 - Version display (2 tests)
 - Version format validation (1 test)
 - No API key required (1 test)
 - Non-verbose mode (1 test)
+- Key display: names the key's source (file or YATTI_API_KEY), never its characters (4 tests)
 
 #### test_retry_logic.bats (15 tests)
 Tests for retry mechanism:

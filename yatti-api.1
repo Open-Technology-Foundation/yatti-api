@@ -116,7 +116,9 @@ Force update even if current version.
 Display help information.
 .TP
 .B version
-Display version information with masked API key.
+Display version information and where the API key comes from (key file or
+.BR YATTI_API_KEY ),
+never any of its characters.
 .SH QUERY OPTIONS
 The following options are available for the
 .B query
@@ -311,7 +313,7 @@ Disable with
 .IP \(bu 3
 API keys are stored with 600 permissions
 .IP \(bu 3
-API keys are masked in version output (last 4 characters shown)
+The version command names the key source and shows no key characters
 .IP \(bu 3
 URL validation prevents API endpoint hijacking
 .IP \(bu 3

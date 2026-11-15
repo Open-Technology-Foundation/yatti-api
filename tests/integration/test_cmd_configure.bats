@@ -24,13 +24,16 @@ teardown() {
   [[ "$output" == *"YaTTi API Configuration"* ]]
 }
 
-@test "configure command shows existing API key (masked)" {
+# It used to print the key's first and last 8 characters; any shown fragment
+# forces a rotation, so it names the key's source instead (as version does)
+@test "configure names the existing key's source, never its characters" {
   create_test_api_key "test_key_1234567890abcdef"
   set_mock_curl_response "$(jq -c '.status.success' "$FIXTURES_FILE")" "200"
 
   run bash -c 'echo "" | ./yatti-api configure'
-  [[ "$output" == *"Current API key: test_key"* ]]
-  [[ "$output" == *"...90abcdef"* ]]
+  [[ "$output" == *"Current API key: Configured (from ${API_KEY_FILE})"* ]]
+  [[ "$output" != *"test_key"* ]]
+  [[ "$output" != *"90abcdef"* ]]
 }
 
 @test "configure command accepts new API key from input" {
@@ -150,10 +153,13 @@ teardown() {
   run bash -c "echo '$test_key' | ./yatti-api configure"
   [[ "$status" -eq 0 ]]
 
-  # Verify it's displayed (masked) on next configure
+  [[ "$(<"$API_KEY_FILE")" == "$test_key" ]]
+
+  # The next configure finds it, and shows none of its characters
   run bash -c 'echo "" | ./yatti-api configure'
-  [[ "$output" == *"Current API key: roundtri"* ]]
-  [[ "$output" == *"23xyz789"* ]]
+  [[ "$output" == *"Current API key: Configured (from ${API_KEY_FILE})"* ]]
+  [[ "$output" != *"roundtri"* ]]
+  [[ "$output" != *"23xyz789"* ]]
 }
 
 # Edge cases

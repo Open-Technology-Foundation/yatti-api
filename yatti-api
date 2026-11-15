@@ -124,6 +124,19 @@ load_api_key() {
   fi
 }
 
+# Describe the API key by where it comes from, never by any of its characters:
+# this text gets pasted into terminals and tickets, and a shown fragment forces
+# a rotation. The source matters because the file beats YATTI_API_KEY.
+api_key_status() {
+  if [[ -z $(load_api_key) ]]; then
+    echo 'Not configured'
+  elif [[ -f $API_KEY_FILE ]]; then
+    echo "Configured (from $API_KEY_FILE)"
+  else
+    echo 'Configured (from YATTI_API_KEY)'
+  fi
+}
+
 # Save API key to $API_KEY_FILE with mode 0600 (config dir mode 0700).
 # Uses install(1) to create the file atomically before write to avoid a
 # permissions race against concurrent readers.
@@ -262,10 +275,9 @@ format_json() {
 cmd_configure() {
   echo 'YaTTi API Configuration'
   echo
-  local -- current_key api_key
-  current_key=$(load_api_key)
-  if [[ -n "$current_key" ]]; then
-    echo "$SCRIPT_NAME: Current API key: ${current_key:0:8}...${current_key: -8}"
+  local -- api_key
+  if [[ -n $(load_api_key) ]]; then
+    echo "$SCRIPT_NAME: Current API key: $(api_key_status)"
     echo
   fi
 
@@ -792,13 +804,7 @@ HELP
 cmd_version() {
   echo "$SCRIPT_NAME $VERSION"
   echo "API Base: $API_BASE"
-  local -- api_key
-  api_key=$(load_api_key)
-  if [[ -n "$api_key" ]]; then
-    echo "API Key: Configured (****${api_key: -4})"
-  else
-    echo 'API Key: Not configured'
-  fi
+  echo "API Key: $(api_key_status)"
 }
 
 # Fingerprint of the first key in an armored key file, read WITHOUT touching
