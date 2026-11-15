@@ -604,9 +604,19 @@ QUERY
       # Check if this is a context-only query
       if ((context_only)); then
         info 'Contexts:'
-        # Display contexts with source and content
-        jq -r '.data.contexts[]? | "\n[\(.source | split("/") | .[-1])]\n\(.content)\n"' \
-          <<< "$response" 2>/dev/null ||:
+        # The server sends the retrieved text in .response, with no contexts,
+        # when it cannot split the passages apart: print that, not nothing
+        local -i context_count=0
+        context_count=$(jq '.data.contexts // [] | length' <<< "$response" 2>/dev/null) || context_count=0
+        if ((context_count)); then
+          # Display contexts with source and content
+          jq -r '.data.contexts[]? | "\n[\(.source | split("/") | .[-1])]\n\(.content)\n"' \
+            <<< "$response" 2>/dev/null ||:
+        elif [[ -n $answer ]]; then
+          echo "$answer"
+        else
+          warn 'No contexts returned'
+        fi
       else
         info 'Answer:'
         echo "$answer"

@@ -168,6 +168,24 @@ teardown() {
   [[ "$output" == *"test_doc.md"* ]]
 }
 
+# The server returns the retrieved text in .response, with no contexts, when
+# it cannot split the passages apart; context-only mode printed nothing then
+@test "context-only mode prints the response text when contexts is empty" {
+  set_mock_curl_response '{"data":{"query_id":"q_ctx_raw","contexts":[],"response":"<results>unsplit passage text</results>","metadata":{}}}' "200"
+
+  run ./yatti-api query -K test_kb -q "test" --context-only
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"unsplit passage text"* ]]
+}
+
+@test "context-only mode warns when nothing came back" {
+  set_mock_curl_response '{"data":{"query_id":"q_ctx_none","contexts":[],"response":"","metadata":{}}}' "200"
+
+  run ./yatti-api query -K test_kb -q "test" --context-only
+  [[ "$status" -eq 0 ]]
+  [[ "$output" == *"No contexts returned"* ]]
+}
+
 # Error handling tests
 
 @test "query command handles missing knowledgebase error" {
