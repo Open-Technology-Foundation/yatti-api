@@ -10,7 +10,7 @@ command -v jq >/dev/null || { >&2 echo 'Error: jq required (apt install jq)'; ex
 command -v bc >/dev/null || { >&2 echo 'Error: bc required (apt install bc)'; exit 18; }
 
 # Script metadata
-declare -r VERSION='1.4.3'
+declare -r VERSION='1.4.4'
 # Invocation path as typed, BEFORE symlink resolution — realpath below
 # canonicalizes, so symlink checks must use this one
 declare -r INVOKED_AS=$0

@@ -855,7 +855,13 @@ done
 
 ## Release Notes
 
-### v1.4.3 (Latest)
+### v1.4.4 (Latest)
+
+- **`query --context-only`** prints the retrieved text when the server returns it
+  without separate contexts, instead of printing nothing
+- **`query --context-only`** warns "No contexts returned" when nothing comes back
+
+### v1.4.3
 
 - **BCS compliance** fixes for medium-severity audit findings
 - Warn function now displays unconditionally (regardless of VERBOSE)
@@ -896,7 +902,7 @@ Run `yatti-api update --check` to see available updates with changelog.
 
 ## Version
 
-Current version: **1.4.3**
+Current version: **1.4.4**
 
 ```bash
 yatti-api update --check    # Check for updates
